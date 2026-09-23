@@ -1,0 +1,53 @@
+name: scroll_music
+description: "A local-first music discovery player with vertical swipe navigation."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.2
+
+  # Image loading with caching (artwork)
+  cached_network_image: ^3.4.1
+
+  # Dynamic color extraction from artwork
+  palette_generator: ^0.3.3+4
+
+  # Premium typography
+  google_fonts: ^6.2.1
+
+  # Animation helpers
+  flutter_animate: ^4.5.0
+
+  # Simple key-value persistence (queue position, preferences)
+  shared_preferences: ^2.5.5
+  youtube_explode_dart: ^3.1.0
+  video_player: ^2.14.0
+  http: ^1.6.0
+  hugeicons: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/applogo-new.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/applogo-new.png"

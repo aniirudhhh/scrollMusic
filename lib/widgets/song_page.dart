@@ -1,0 +1,522 @@
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
+import '../data/library_manager.dart';
+import '../models/playback_state.dart';
+import '../models/song.dart';
+import 'artwork_widget.dart';
+import 'lyrics_view.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:hugeicons/hugeicons.dart';
+import '../core/utils/app_toast.dart';
+import '../screens/queue/queue_screen.dart';
+import 'song_options_sheet.dart';
+
+class SongPage extends StatefulWidget {
+  const SongPage({
+    super.key,
+    required this.song,
+    required this.playbackState,
+    required this.positionNotifier,
+    required this.isCurrent,
+    required this.durationNotifier,
+    required this.onPlayPause,
+    required this.onSeek,
+    required this.onSkipNext,
+    required this.onSkipPrev,
+  });
+
+  final Song song;
+  final PlaybackState playbackState;
+  final ValueNotifier<Duration> positionNotifier;
+  final bool isCurrent;
+  final ValueNotifier<Duration?> durationNotifier;
+  final VoidCallback onPlayPause;
+  final ValueChanged<Duration> onSeek;
+  final VoidCallback onSkipNext;
+  final VoidCallback onSkipPrev;
+
+  @override
+  State<SongPage> createState() => _SongPageState();
+}
+
+class _SongPageState extends State<SongPage> {
+  bool _showLyrics = false;
+
+  @override
+  void didUpdateWidget(SongPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.song.artwork != widget.song.artwork) {
+      _showLyrics = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Removed duplicate local blurred background.
+        // Handled globally by DynamicGlobalBackground.
+
+        // ── Main UI Overlay ────────────────────────────────────────────────
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 16),
+
+                // ── Large Artwork or Lyrics ──────────────────────────────────
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: _showLyrics
+                          ? Container(
+                              key: const ValueKey('lyrics'),
+                              // Apple style: openly above the progress bar with no strict borders
+                              child: LyricsView(
+                                title: widget.song.title,
+                                artist: widget.song.artist,
+                                durationNotifier: widget.durationNotifier,
+                                positionNotifier: widget.positionNotifier,
+                                isCurrent: widget.isCurrent,
+                              ),
+                            )
+                          : AspectRatio(
+                              key: const ValueKey('artwork'),
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.4),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: RepaintBoundary(
+                                    child: ArtworkWidget(
+                                      artworkUrl: widget.song.artwork,
+                                      fallbackUrl: widget.song.fallbackArtwork,
+                                      songId: widget.song.id,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) => SizeTransition(
+                    sizeFactor: animation,
+                    axisAlignment: -1.0,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: _showLyrics
+                      ? const SizedBox.shrink(key: ValueKey('hidden_info'))
+                      : Column(
+                          key: const ValueKey('info_row'),
+                          children: [
+                            const SizedBox(height: 24),
+                            // ── Info Row (Title, Artist, Like) ──────────────────────────
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.song.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 20, // Reduced from 24
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2), // Reduced from 4
+                                      Text(
+                                        widget.song.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 14, // Reduced from 16
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.white.withOpacity(0.7),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const HugeIcon(icon: HugeIcons.strokeRoundedForward01, color: Colors.white, size: 28),
+                                  onPressed: () => QueueScreen.show(context),
+                                ),
+                                _LikeButton(song: widget.song),
+                              ],
+                            ),
+                          ],
+                        ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Progress Bar ────────────────────────────────────────────
+                _ProgressBar(
+                  positionNotifier: widget.positionNotifier,
+                  isCurrent: widget.isCurrent,
+                  durationNotifier: widget.durationNotifier,
+                  onSeek: widget.onSeek,
+                ),
+
+                const SizedBox(height: 8),
+
+                // ── Playback Controls Row ────────────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedShuffle,
+                        size: 24.0,
+                        color: Colors.white70,
+                        strokeWidth: 1.5,
+                      ),
+                      onPressed: () {}, // Placeholder
+                    ),
+                    IconButton(
+                      iconSize: 36,
+                      icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                      onPressed: widget.onSkipPrev,
+                    ),
+                    GestureDetector(
+                      onTap: widget.onPlayPause,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: HugeIcon(
+                            icon: widget.playbackState == PlaybackState.playing || 
+                                  widget.playbackState == PlaybackState.buffering
+                                ? HugeIcons.strokeRoundedPause
+                                : HugeIcons.strokeRoundedPlay,
+                            color: Colors.black,
+                            size: 36.0,
+                            strokeWidth: 1.5, // Matches the thin stroke style
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      iconSize: 36,
+                      icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                      onPressed: widget.onSkipNext,
+                    ),
+                    IconButton(
+                      icon: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedArrowReloadHorizontal,
+                        size: 24.0,
+                        color: Colors.white70,
+                        strokeWidth: 1.5,
+                      ),
+                      onPressed: () {}, // Placeholder
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Footer Row ──────────────────────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedPlaylist01,
+                        size: 24.0,
+                        color: Colors.white70,
+                        strokeWidth: 1.5,
+                      ),
+                      onPressed: () {
+                        final library = context.read<LibraryManager>();
+                        _showAddToPlaylistModal(context, library, widget.song);
+                      },
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showLyrics = !_showLyrics;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white24, width: 1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'assets/lyrics.png',
+                              color: _showLyrics ? Colors.white : Colors.white70,
+                              width: 16,
+                              height: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Lyrics',
+                              style: TextStyle(
+                                color: _showLyrics ? Colors.white : Colors.white70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedMoreVertical,
+                        size: 24.0,
+                        color: Colors.white70,
+                        strokeWidth: 1.5,
+                      ),
+                      onPressed: () {
+                        SongOptionsBottomSheet.show(context, widget.song);
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 90), // Reduced padding for floating navbar
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showAddToPlaylistModal(BuildContext context, LibraryManager library, Song song) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add to Playlist',
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              if (library.customPlaylists.isEmpty)
+                Text(
+                  "You don't have any playlists yet. Go to your Profile to create one!",
+                  style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                )
+              else
+                ...library.customPlaylists.map((playlist) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const HugeIcon(
+                      icon: HugeIcons.strokeRoundedPlaylist01,
+                      size: 24.0,
+                      color: Colors.white70,
+                      strokeWidth: 1.5,
+                    ),
+                    title: Text(playlist.name, style: const TextStyle(color: Colors.white)),
+                    onTap: () {
+                      library.addSongToPlaylist(playlist.id, song);
+                      Navigator.pop(context);
+                      AppToast.show(
+                        context,
+                        'Added to ${playlist.name}',
+                        icon: HugeIcons.strokeRoundedPlaylist01,
+                      );
+                    },
+                  );
+                }),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Like Button ─────────────────────────────────────────────────────────────
+class _LikeButton extends StatelessWidget {
+  const _LikeButton({required this.song});
+  final Song song;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<LibraryManager>(
+      builder: (context, library, _) {
+        final isLiked = library.isLiked(song.id);
+        return IconButton(
+          icon: isLiked
+              ? const Icon(Icons.favorite_rounded, color: Colors.white, size: 28)
+              : const HugeIcon(
+                  icon: HugeIcons.strokeRoundedFavourite,
+                  color: Colors.white70,
+                  size: 28.0,
+                  strokeWidth: 1.5,
+                ),
+          onPressed: () {
+            library.toggleLike(song);
+            AppToast.show(
+              context,
+              !isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs',
+              icon: HugeIcons.strokeRoundedFavourite,
+            );
+          },
+        ).animate(key: ValueKey(isLiked)).scaleXY(
+          begin: 0.5,
+          end: 1.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutBack,
+        );
+      },
+    );
+  }
+}
+
+// ─── Progress bar ──────────────────────────────────────────────────────────
+
+class _ProgressBar extends StatelessWidget {
+  const _ProgressBar({
+    required this.positionNotifier,
+    required this.isCurrent,
+    required this.durationNotifier,
+    required this.onSeek,
+  });
+
+  final ValueNotifier<Duration> positionNotifier;
+  final bool isCurrent;
+  final ValueNotifier<Duration?> durationNotifier;
+  final ValueChanged<Duration> onSeek;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Duration?>(
+      valueListenable: durationNotifier,
+      builder: (context, duration, _) {
+        return ValueListenableBuilder<Duration>(
+          valueListenable: positionNotifier,
+          builder: (context, rawPosition, child) {
+            final position = isCurrent ? rawPosition : Duration.zero;
+            final total = duration?.inMilliseconds.toDouble() ?? 1.0;
+            final current = position.inMilliseconds.toDouble().clamp(0.0, total);
+            final progress = total > 0 ? current / total : 0.0;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3.0,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                    activeTrackColor: Colors.white,
+                    inactiveTrackColor: Colors.white.withOpacity(0.3),
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.white.withOpacity(0.15),
+                    trackShape: _CustomTrackShape(),
+                  ),
+                  child: Slider(
+                    value: progress.clamp(0.0, 1.0),
+                    onChanged: duration != null
+                        ? (v) {
+                            final ms = (v * (duration.inMilliseconds)).round();
+                            onSeek(Duration(milliseconds: ms));
+                          }
+                        : null,
+                  ),
+                ),
+                // Transform to reduce the padding inherently added by the slider widget
+                Transform.translate(
+                  offset: const Offset(0, -6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _format(position),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.6),
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      Text(
+                        duration != null ? _format(duration) : '--:--',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.6),
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _format(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+}
+
+class _CustomTrackShape extends RoundedRectSliderTrackShape {
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final trackHeight = sliderTheme.trackHeight;
+    final trackLeft = offset.dx;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight!) / 2;
+    final trackWidth = parentBox.size.width;
+    return Rect.fromLTWH(trackLeft, trackTop, trackWidth, trackHeight);
+  }
+}
