@@ -5,6 +5,7 @@ import '../models/lyric_line.dart';
 class LyricsService {
   static const String _baseUrl = 'https://lrclib.net/api';
   static const String _agent = 'ScrollMusic (https://github.com/scrollmusic)';
+  static final Map<String, List<LyricLine>?> _cache = {};
 
   /// Clean noisy YouTube titles (e.g. "(Official Video)", "Lyrical:")
   String _cleanTitle(String title) {
@@ -18,6 +19,11 @@ class LyricsService {
   Future<List<LyricLine>?> fetchLyrics(String title, String artist, int durationSeconds) async {
     final cleanTitle = _cleanTitle(title);
     final cleanArtist = _cleanTitle(artist);
+    final cacheKey = '$cleanTitle|$cleanArtist|$durationSeconds';
+    
+    if (_cache.containsKey(cacheKey)) {
+      return _cache[cacheKey];
+    }
 
     // 1. Try exact match
     try {
@@ -32,7 +38,9 @@ class LyricsService {
         final data = jsonDecode(response.body);
         final syncedLyrics = data['syncedLyrics'] as String?;
         if (syncedLyrics != null && syncedLyrics.isNotEmpty) {
-          return _parseLrc(syncedLyrics);
+          final result = _parseLrc(syncedLyrics);
+          _cache[cacheKey] = result;
+          return result;
         }
       }
     } catch (e) {
@@ -67,13 +75,16 @@ class LyricsService {
         }
 
         if (bestHit != null) {
-          return _parseLrc(bestHit['syncedLyrics']);
+          final result = _parseLrc(bestHit['syncedLyrics']);
+          _cache[cacheKey] = result;
+          return result;
         }
       }
     } catch (e) {
       // Ignore
     }
 
+    _cache[cacheKey] = null;
     return null;
   }
 

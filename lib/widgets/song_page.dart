@@ -12,6 +12,10 @@ import 'package:hugeicons/hugeicons.dart';
 import '../core/utils/app_toast.dart';
 import '../screens/queue/queue_screen.dart';
 import 'song_options_sheet.dart';
+import 'single_line_lyrics_view.dart';
+import 'wavy_progress_bar.dart';
+import '../models/artist.dart';
+import '../screens/artist/artist_screen.dart';
 
 class SongPage extends StatefulWidget {
   const SongPage({
@@ -76,15 +80,22 @@ class _SongPageState extends State<SongPage> {
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: _showLyrics
-                          ? Container(
+                          ? GestureDetector(
                               key: const ValueKey('lyrics'),
-                              // Apple style: openly above the progress bar with no strict borders
-                              child: LyricsView(
-                                title: widget.song.title,
-                                artist: widget.song.artist,
-                                durationNotifier: widget.durationNotifier,
-                                positionNotifier: widget.positionNotifier,
-                                isCurrent: widget.isCurrent,
+                              onTap: () {
+                                setState(() {
+                                  _showLyrics = false;
+                                });
+                              },
+                              child: Container(
+                                color: Colors.transparent, // expand hit area
+                                child: LyricsView(
+                                  title: widget.song.title,
+                                  artist: widget.song.artist,
+                                  durationNotifier: widget.durationNotifier,
+                                  positionNotifier: widget.positionNotifier,
+                                  isCurrent: widget.isCurrent,
+                                ),
                               ),
                             )
                           : AspectRatio(
@@ -150,15 +161,38 @@ class _SongPageState extends State<SongPage> {
                                         ),
                                       ),
                                       const SizedBox(height: 2), // Reduced from 4
-                                      Text(
-                                        widget.song.artist,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 14, // Reduced from 16
-                                          fontWeight: FontWeight.w400,
-                                          color: Colors.white.withOpacity(0.7),
-                                        ),
+                                      Wrap(
+                                        spacing: 4,
+                                        runSpacing: 2,
+                                        children: widget.song.artist
+                                            .split(RegExp(r'(?:,\s*|\s+&\s+)'))
+                                            .where((a) => a.trim().isNotEmpty)
+                                            .map((artistName) => GestureDetector(
+                                                  onTap: () {
+                                                    final dummyArtist = Artist(
+                                                      id: artistName.trim(),
+                                                      name: artistName.trim(),
+                                                      imageUrl: widget.song.artwork,
+                                                    );
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) => ArtistScreen(artist: dummyArtist),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: Text(
+                                                    artistName.trim(),
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w400,
+                                                      color: Colors.white.withOpacity(0.7),
+                                                      decoration: TextDecoration.underline,
+                                                      decorationColor: Colors.white.withOpacity(0.3),
+                                                    ),
+                                                  ),
+                                                ))
+                                            .toList(),
                                       ),
                                     ],
                                   ),
@@ -175,7 +209,25 @@ class _SongPageState extends State<SongPage> {
                         ),
                 ),
 
-                const SizedBox(height: 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _showLyrics 
+                    ? const SizedBox(height: 24)
+                    : SingleLineLyricsView(
+                        title: widget.song.title,
+                        artist: widget.song.artist,
+                        durationNotifier: widget.durationNotifier,
+                        positionNotifier: widget.positionNotifier,
+                        isCurrent: widget.isCurrent,
+                        onTap: () {
+                          setState(() {
+                            _showLyrics = true;
+                          });
+                        },
+                      ),
+                ),
+                
+                const SizedBox(height: 8),
 
                 // ── Progress Bar ────────────────────────────────────────────
                 _ProgressBar(
@@ -183,6 +235,7 @@ class _SongPageState extends State<SongPage> {
                   isCurrent: widget.isCurrent,
                   durationNotifier: widget.durationNotifier,
                   onSeek: widget.onSeek,
+                  isPaused: widget.playbackState != PlaybackState.playing && widget.playbackState != PlaybackState.loading,
                 ),
 
                 const SizedBox(height: 8),
@@ -261,40 +314,6 @@ class _SongPageState extends State<SongPage> {
                         final library = context.read<LibraryManager>();
                         _showAddToPlaylistModal(context, library, widget.song);
                       },
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _showLyrics = !_showLyrics;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white24, width: 1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset(
-                              'assets/lyrics.png',
-                              color: _showLyrics ? Colors.white : Colors.white70,
-                              width: 16,
-                              height: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Lyrics',
-                              style: TextStyle(
-                                color: _showLyrics ? Colors.white : Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                     IconButton(
                       icon: const HugeIcon(
@@ -420,12 +439,14 @@ class _ProgressBar extends StatelessWidget {
     required this.isCurrent,
     required this.durationNotifier,
     required this.onSeek,
+    this.isPaused = false,
   });
 
   final ValueNotifier<Duration> positionNotifier;
   final bool isCurrent;
   final ValueNotifier<Duration?> durationNotifier;
   final ValueChanged<Duration> onSeek;
+  final bool isPaused;
 
   @override
   Widget build(BuildContext context) {
@@ -443,30 +464,19 @@ class _ProgressBar extends StatelessWidget {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SliderTheme(
-                  data: SliderThemeData(
-                    trackHeight: 3.0,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                    activeTrackColor: Colors.white,
-                    inactiveTrackColor: Colors.white.withOpacity(0.3),
-                    thumbColor: Colors.white,
-                    overlayColor: Colors.white.withOpacity(0.15),
-                    trackShape: _CustomTrackShape(),
-                  ),
-                  child: Slider(
-                    value: progress.clamp(0.0, 1.0),
-                    onChanged: duration != null
-                        ? (v) {
-                            final ms = (v * (duration.inMilliseconds)).round();
-                            onSeek(Duration(milliseconds: ms));
-                          }
-                        : null,
-                  ),
+                WavyProgressBar(
+                  value: progress.clamp(0.0, 1.0),
+                  isPaused: isPaused,
+                  onChanged: duration != null
+                      ? (v) {
+                          final ms = (v * (duration.inMilliseconds)).round();
+                          onSeek(Duration(milliseconds: ms));
+                        }
+                      : null,
                 ),
                 // Transform to reduce the padding inherently added by the slider widget
                 Transform.translate(
-                  offset: const Offset(0, -6),
+                  offset: const Offset(0, -2), // Adjusted for WavyProgressBar height
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -504,19 +514,4 @@ class _ProgressBar extends StatelessWidget {
   }
 }
 
-class _CustomTrackShape extends RoundedRectSliderTrackShape {
-  @override
-  Rect getPreferredRect({
-    required RenderBox parentBox,
-    Offset offset = Offset.zero,
-    required SliderThemeData sliderTheme,
-    bool isEnabled = false,
-    bool isDiscrete = false,
-  }) {
-    final trackHeight = sliderTheme.trackHeight;
-    final trackLeft = offset.dx;
-    final trackTop = offset.dy + (parentBox.size.height - trackHeight!) / 2;
-    final trackWidth = parentBox.size.width;
-    return Rect.fromLTWH(trackLeft, trackTop, trackWidth, trackHeight);
-  }
-}
+

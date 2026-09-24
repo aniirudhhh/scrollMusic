@@ -8,6 +8,9 @@ import '../../screens/home/home_controller.dart';
 import '../../models/playlist.dart';
 import '../../models/song.dart';
 import '../../core/utils/app_toast.dart';
+import '../artist/artist_screen.dart';
+import '../../data/yt_music_sync_service.dart';
+import 'account_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -20,19 +23,38 @@ class ProfileScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         slivers: [
           // Header
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 12),
-                child: Text(
-                  'Library',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                  ),
+                padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'Library',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    Builder(
+                      builder: (context) => IconButton(
+                        icon: const HugeIcon(icon: HugeIcons.strokeRoundedSettings01, color: Colors.white, size: 28),
+                        onPressed: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => const _SettingsBottomSheet(),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -57,7 +79,12 @@ class ProfileScreen extends StatelessWidget {
                     _LibraryCategoryTile(
                       title: 'Artists',
                       icon: HugeIcons.strokeRoundedMic01,
-                      onTap: () => AppToast.show(context, 'Artists coming soon'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const _ArtistsListView()),
+                        );
+                      },
                     ),
                     _LibraryCategoryTile(
                       title: 'Albums',
@@ -65,8 +92,8 @@ class ProfileScreen extends StatelessWidget {
                       onTap: () => AppToast.show(context, 'Albums coming soon'),
                     ),
                     _LibraryCategoryTile(
-                      title: 'Songs',
-                      icon: HugeIcons.strokeRoundedMusicNote01,
+                      title: 'Liked Songs',
+                      icon: HugeIcons.strokeRoundedFavourite,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -486,7 +513,7 @@ class _PlaylistDetailScreen extends StatelessWidget {
                           onTap: () {
                             final queue = songs.sublist(index);
                             context.read<HomeController>().playNewQueue(queue);
-                            Navigator.of(context).popUntil((route) => route.isFirst);
+                            AppToast.show(context, 'Playing ${song.title}');
                           },
                           borderRadius: BorderRadius.circular(8),
                           child: Row(
@@ -559,7 +586,7 @@ class _PlaylistDetailScreen extends StatelessWidget {
           ? FloatingActionButton.extended(
               onPressed: () {
                 context.read<HomeController>().playNewQueue(songs);
-                Navigator.of(context).popUntil((route) => route.isFirst);
+                AppToast.show(context, 'Playing ${songs.first.title}');
               },
               backgroundColor: const Color(0xFFFF2D55),
               foregroundColor: Colors.white,
@@ -567,6 +594,333 @@ class _PlaylistDetailScreen extends StatelessWidget {
               label: const Text('Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             )
           : null,
+    );
+  }
+}
+
+// ─── Artists List View ────────────────────────────────────────────────────
+
+class _ArtistsListView extends StatelessWidget {
+  const _ArtistsListView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFFFF2D55)),
+        title: const Text('Artists', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+      ),
+      body: Consumer<LibraryManager>(
+        builder: (context, library, _) {
+          final artists = library.followedArtists;
+          if (artists.isEmpty) {
+            return const Center(
+              child: Text('No Followed Artists', style: TextStyle(color: Colors.white54, fontSize: 16)),
+            );
+          }
+
+          return GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 24,
+              childAspectRatio: 0.8,
+            ),
+            itemCount: artists.length,
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ArtistScreen(artist: artist),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.1)),
+                          image: DecorationImage(
+                            image: NetworkImage(artist.imageUrl),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      artist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SettingsBottomSheet extends StatefulWidget {
+  const _SettingsBottomSheet();
+
+  @override
+  State<_SettingsBottomSheet> createState() => _SettingsBottomSheetState();
+}
+
+class _SettingsBottomSheetState extends State<_SettingsBottomSheet> {
+  bool _isLoggedIn = false;
+  String? _accountName;
+  String? _avatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final cookie = await YTMusicSyncService.getCookie();
+    final hasCookie = YTMusicSyncService.hasCookie(cookie);
+    
+    if (hasCookie) {
+      final profile = await YTMusicSyncService.fetchUserProfile();
+      if (mounted) {
+        setState(() {
+          _isLoggedIn = true;
+          _accountName = profile?['name'];
+          _avatarUrl = profile?['avatarUrl'];
+        });
+      }
+    }
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, top: 24, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.5),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTile(String title, dynamic icon, {VoidCallback? onTap}) {
+    return ListTile(
+      onTap: onTap,
+      leading: HugeIcon(icon: icon, color: Colors.white, size: 20),
+      title: Text(
+        title,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+      ),
+      trailing: HugeIcon(
+        icon: HugeIcons.strokeRoundedArrowRight01,
+        color: Colors.white.withOpacity(0.3),
+        size: 18,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: BoxDecoration(
+            color: const Color(0xFF131315).withOpacity(0.7),
+            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+          ),
+          child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const SizedBox(width: 40),
+                const Text(
+                  'Settings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              children: [
+                // Profile section
+                Center(
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.white.withOpacity(0.1),
+                        backgroundImage: _avatarUrl != null ? CachedNetworkImageProvider(_avatarUrl!) : null,
+                        child: _avatarUrl == null
+                            ? const HugeIcon(icon: HugeIcons.strokeRoundedUserCircle, color: Colors.white, size: 40)
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _accountName ?? (_isLoggedIn ? 'User' : 'Guest'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Status Pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          HugeIcon(icon: HugeIcons.strokeRoundedActivity01, color: Colors.white.withOpacity(0.7), size: 20),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Account Status',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _isLoggedIn ? Colors.green : Colors.grey,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isLoggedIn ? 'Synced' : 'Offline',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          HugeIcon(
+                            icon: HugeIcons.strokeRoundedArrowRight01,
+                            color: Colors.white.withOpacity(0.3),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                _buildSectionHeader('PERSONALIZE'),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildTile('YouTube Music Sync', HugeIcons.strokeRoundedYoutube, onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AccountScreen()),
+                        );
+                      }),
+                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
+                      _buildTile('Audio Quality', HugeIcons.strokeRoundedMusicNote01, onTap: () {}),
+                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
+                      _buildTile('Playback Settings', HugeIcons.strokeRoundedSettings01, onTap: () {}),
+                    ],
+                  ),
+                ),
+
+                _buildSectionHeader('NEED HELP?'),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildTile('Tips and Tricks', HugeIcons.strokeRoundedIdea01, onTap: () {}),
+                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
+                      _buildTile('Frequently Asked Questions', HugeIcons.strokeRoundedHelpCircle, onTap: () {}),
+                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
+                      _buildTile('Contact Us', HugeIcons.strokeRoundedMail01, onTap: () {}),
+                    ],
+                  ),
+                ),
+                
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ],
+      ),
+        ),
+      ),
     );
   }
 }

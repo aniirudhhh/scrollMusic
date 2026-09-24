@@ -105,7 +105,7 @@ class HomeController extends ChangeNotifier {
     _programmaticNav = false; // User swipe, don't trigger animateToPage
     notifyListeners();
 
-    await _player.stop();
+    _player.pause();
 
     // Trigger more songs fetch well in advance (within 6 songs from end)
     _checkAndFetchMore();
@@ -292,7 +292,7 @@ class HomeController extends ChangeNotifier {
       _programmaticNav = true;
       notifyListeners();
       
-      await _player.stop();
+      _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(nextIndex));
       _checkAndFetchMore();
       await play();
@@ -310,7 +310,7 @@ class HomeController extends ChangeNotifier {
       _programmaticNav = true;
       notifyListeners();
       
-      await _player.stop();
+      _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(prevIndex));
       await play();
     }
