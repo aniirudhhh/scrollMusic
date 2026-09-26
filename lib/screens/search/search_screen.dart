@@ -141,6 +141,10 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_searchController.text.trim().isNotEmpty) {
       _addRecentSearch(_searchController.text.trim());
     }
+    
+    // Hide keyboard to prevent it from squashing the full screen player (SongPage)
+    FocusScope.of(context).unfocus();
+    
     // Add to the front of the queue and play
     context.read<HomeController>().playSongNext(song);
     
@@ -263,30 +267,39 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               children: _recentSearches.map((query) {
-                return GestureDetector(
-                  onTap: () => _onChipTapped(query),
-                  child: LiquidGlassSurface(
-                    blurBehind: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    tintColor: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.history_rounded, color: Colors.white54, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          query,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                return Material(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(24),
+                  child: InkWell(
+                    onTap: () => _onChipTapped(query),
+                    borderRadius: BorderRadius.circular(24),
+                    splashColor: Colors.white.withValues(alpha: 0.1),
+                    highlightColor: Colors.white.withValues(alpha: 0.05),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const HugeIcon(
+                            icon: HugeIcons.strokeRoundedClock01,
+                            color: Colors.white70,
+                            size: 16,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Text(
+                            query,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

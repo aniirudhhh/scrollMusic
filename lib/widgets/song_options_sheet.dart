@@ -7,6 +7,7 @@ import '../models/song.dart';
 import '../screens/home/home_controller.dart';
 import '../data/library_manager.dart';
 import '../core/utils/app_toast.dart';
+import '../core/utils/sleep_timer.dart';
 import 'liquid_glass_surface.dart';
 
 class SongOptionsBottomSheet extends StatelessWidget {
@@ -136,6 +137,30 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
+                Consumer<SleepTimer>(
+                  builder: (context, sleepTimer, _) {
+                    final remaining = sleepTimer.timeRemaining;
+                    String? timeStr;
+                    if (remaining != null && remaining.inSeconds > 0) {
+                      final m = remaining.inMinutes;
+                      final s = remaining.inSeconds % 60;
+                      timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+                    }
+
+                    return _OptionTile(
+                      icon: HugeIcons.strokeRoundedClock01,
+                      iconColor: sleepTimer.isActive ? const Color(0xFFFF2D55) : Colors.white,
+                      title: 'Sleep Timer',
+                      trailing: timeStr != null
+                          ? Text(timeStr, style: const TextStyle(color: Color(0xFFFF2D55), fontWeight: FontWeight.bold))
+                          : null,
+                      onTap: () {
+                        _showSleepTimerPicker(context);
+                      },
+                    );
+                  }
+                ),
+                _buildDivider(),
                 _OptionTile(
                   icon: HugeIcons.strokeRoundedMic01,
                   title: 'View Artist',
@@ -188,12 +213,14 @@ class _OptionTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
   final Color iconColor;
+  final Widget? trailing;
 
   const _OptionTile({
     required this.icon,
     required this.title,
     required this.onTap,
     this.iconColor = Colors.white,
+    this.trailing,
   });
 
   @override
@@ -222,6 +249,7 @@ class _OptionTile extends StatelessWidget {
                 ),
               ),
             ),
+            if (trailing != null) trailing!,
           ],
         ),
       ),
@@ -289,6 +317,144 @@ void _showPlaylistPicker(BuildContext context, Song song) {
             ],
           ),
         ),
+      );
+    },
+  );
+}
+
+void _showSleepTimerPicker(BuildContext context) {
+  int minutes = 15;
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return Container(
+            margin: const EdgeInsets.all(16),
+            child: LiquidGlassSurface(
+              blurBehind: true,
+              sigma: 30,
+              borderRadius: BorderRadius.circular(24),
+              tintColor: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'Sleep Timer',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.1)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                    child: Consumer<SleepTimer>(
+                      builder: (context, sleepTimer, _) {
+                        if (sleepTimer.isActive) {
+                          final remaining = sleepTimer.timeRemaining!;
+                          final m = remaining.inMinutes;
+                          final s = remaining.inSeconds % 60;
+                          final timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+                          
+                          return Column(
+                            children: [
+                              const Text('Time Remaining', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                              const SizedBox(height: 8),
+                              Text(timeStr, style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 32),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () {
+                                    sleepTimer.cancel();
+                                    Navigator.pop(context);
+                                    AppToast.show(context, 'Sleep timer disabled');
+                                  },
+                                  child: const Text('Turn Off Timer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        // Timer not active, show customizer
+                        return Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  iconSize: 42,
+                                  color: Colors.white54,
+                                  icon: const Icon(Icons.remove_circle_outline),
+                                  onPressed: minutes > 5 ? () {
+                                    setState(() => minutes -= 5);
+                                  } : null,
+                                ),
+                                const SizedBox(width: 24),
+                                SizedBox(
+                                  width: 100,
+                                  child: Text(
+                                    '$minutes min',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 24),
+                                IconButton(
+                                  iconSize: 42,
+                                  color: Colors.white,
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: minutes < 120 ? () {
+                                    setState(() => minutes += 5);
+                                  } : null,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFF2D55),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 0,
+                                ),
+                                onPressed: () {
+                                  final homeController = context.read<HomeController>();
+                                  sleepTimer.start(Duration(minutes: minutes), () {
+                                    homeController.pause();
+                                  });
+                                  Navigator.pop(context);
+                                  AppToast.show(context, 'Sleeping in $minutes minutes', icon: HugeIcons.strokeRoundedClock01);
+                                },
+                                child: const Text('Start Timer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                    ),
+                  ),
+                  SizedBox(height: MediaQuery.of(context).padding.bottom),
+                ],
+              ),
+            ),
+          );
+        }
       );
     },
   );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/utils/debouncer.dart';
 import '../../data/song_repository.dart';
@@ -7,6 +8,8 @@ import '../../extraction/extraction_service.dart';
 import '../../models/playback_state.dart';
 import '../../models/song.dart';
 import '../../playback/playback_manager.dart';
+import '../../playback/playback_manager.dart';
+import '../../recommendation/recommendation_engine.dart';
 
 /// The single source of truth for:
 ///   - which song is current
@@ -21,10 +24,12 @@ class HomeController extends ChangeNotifier {
     required ExtractionService extractionService,
     required SongRepository repository,
     required LibraryManager libraryManager,
-  })  : _player = playbackManager,
-        _extractor = extractionService,
-        _repo = repository,
-        _libraryManager = libraryManager {
+    required RecommendationEngine recommendationEngine,
+  }) : _player = playbackManager,
+       _extractor = extractionService,
+       _repo = repository,
+       _libraryManager = libraryManager,
+       _recEngine = recommendationEngine {
     _subscribeToPlayer();
   }
 
@@ -32,6 +37,7 @@ class HomeController extends ChangeNotifier {
   final ExtractionService _extractor;
   final SongRepository _repo;
   final LibraryManager _libraryManager;
+  final RecommendationEngine _recEngine;
 
   // ─── State ────────────────────────────────────────────────────────────────
 
@@ -45,18 +51,23 @@ class HomeController extends ChangeNotifier {
   bool _forceJump = false;
   bool _programmaticNav = false;
 
+  bool _isLoopOne = false;
+  bool _isShuffled = false;
+
   // Cache for extracted audio stream URLs
   final Map<String, CachedStream> _streamCache = {};
 
-  final Debouncer _preloadDebouncer =
-      Debouncer(duration: const Duration(milliseconds: 200));
+  final Debouncer _preloadDebouncer = Debouncer(
+    duration: const Duration(milliseconds: 200),
+  );
 
   // ─── Getters ──────────────────────────────────────────────────────────────
 
   List<Song> get songs => _songs;
   int get currentIndex => _currentIndex;
-  Song? get currentSong =>
-      _songs.isNotEmpty && _currentIndex < _songs.length ? _songs[_currentIndex] : null;
+  Song? get currentSong => _songs.isNotEmpty && _currentIndex < _songs.length
+      ? _songs[_currentIndex]
+      : null;
   PlaybackState get playbackState => _playbackState;
   AppError? get error => _error;
   Duration? get duration => _player.duration;
@@ -64,6 +75,8 @@ class HomeController extends ChangeNotifier {
   bool get isLoadingMore => _repo.isLoading;
   bool get forceJump => _forceJump;
   bool get programmaticNav => _programmaticNav;
+  bool get isLoopOne => _isLoopOne;
+  bool get isShuffled => _isShuffled;
 
   void consumeForceJump() {
     _forceJump = false;
@@ -96,6 +109,8 @@ class HomeController extends ChangeNotifier {
   Future<void> onPageChanged(int newIndex) async {
     if (newIndex == _currentIndex) return;
 
+    _recordInteractionForCurrent();
+
     // Update state synchronously to prevent scroll stutter
     _currentIndex = newIndex;
     _error = null;
@@ -114,7 +129,7 @@ class HomeController extends ChangeNotifier {
     _preloadDebouncer.call(() => _prefetchAround(newIndex));
 
     // Always auto-play on swipe
-    await play();
+    await play(isUserInitiated: true);
   }
 
   void _checkAndFetchMore() {
@@ -148,7 +163,40 @@ class HomeController extends ChangeNotifier {
 
   // ─── Playback commands ────────────────────────────────────────────────────
 
-  Future<void> play() async {
+  void toggleLoop() {
+    _isLoopOne = !_isLoopOne;
+    notifyListeners();
+  }
+
+  void toggleShuffle() {
+    _isShuffled = !_isShuffled;
+    if (_isShuffled && _songs.length > _currentIndex + 1) {
+      final upcoming = _songs.sublist(_currentIndex + 1);
+      upcoming.shuffle();
+      _repo.replaceQueueAfter(_currentIndex, upcoming);
+      _songs = _repo.getSongs();
+    }
+    notifyListeners();
+  }
+
+  void _recordInteractionForCurrent() {
+    final song = currentSong;
+    if (song == null) return;
+
+    final currentMs = positionNotifier.value.inMilliseconds.toDouble();
+    final totalMs = (durationNotifier.value?.inMilliseconds ?? 0).toDouble();
+
+    if (totalMs > 0) {
+      final ratio = currentMs / totalMs;
+      if (ratio >= 0.9) {
+        _recEngine.recordSongCompleted(song);
+      } else {
+        _recEngine.recordSongSkipped(song, ratio);
+      }
+    }
+  }
+
+  Future<void> play({bool isUserInitiated = true}) async {
     final song = currentSong;
     if (song == null) return;
 
@@ -157,9 +205,10 @@ class HomeController extends ChangeNotifier {
     try {
       final stream = await _getStream(song);
       await _player.playSong(song, stream.streamUrl);
-      
+
       // Track history
       _libraryManager.addToHistory(song);
+      _recEngine.recordSongStarted(song, isUserInitiated: isUserInitiated);
     } on AppError catch (e) {
       await _handleError(e);
     } catch (e) {
@@ -174,9 +223,9 @@ class HomeController extends ChangeNotifier {
     _forceJump = true;
     notifyListeners();
     await skipToNext();
-    
+
     // In the background, fetch recommendations for this song to build a seamless radio
-    _fetchAndInjectRecommendations(song.id);
+    _fetchAndInjectRecommendations(song);
   }
 
   /// Inserts a song after the current index (Top of Queue) without interrupting playback.
@@ -184,9 +233,6 @@ class HomeController extends ChangeNotifier {
     _repo.insertSong(_currentIndex + 1, song);
     _songs = _repo.getSongs();
     notifyListeners();
-    
-    // In the background, fetch recommendations for this song to build a seamless radio
-    _fetchAndInjectRecommendations(song.id);
   }
 
   /// Adds a song to the very end of the queue.
@@ -199,7 +245,7 @@ class HomeController extends ChangeNotifier {
   /// Replaces the entire queue with a new list of songs and plays the first one.
   Future<void> playNewQueue(List<Song> newSongs) async {
     if (newSongs.isEmpty) return;
-    
+
     await _player.stop();
     _repo.replaceEntireQueue(newSongs);
     _songs = _repo.getSongs();
@@ -211,17 +257,23 @@ class HomeController extends ChangeNotifier {
     _forceJump = true;
     _programmaticNav = true;
     notifyListeners();
-    
+
     _preloadDebouncer.call(() => _prefetchAround(0));
     await play();
   }
 
-  Future<void> _fetchAndInjectRecommendations(String videoId) async {
+  Future<void> _fetchAndInjectRecommendations(Song? overrideSeedTrack, {int? replaceIndex}) async {
     try {
-      final recommendations = await _extractor.fetchRecommendations(videoId);
+      // Use the recommendation engine to generate the contextual feed.
+      final recommendations = await _recEngine.getRecommendedFeed(
+        limit: 10,
+        overrideSeedTrack: overrideSeedTrack,
+        overrideConsecutiveAutoPlays: overrideSeedTrack != null ? 0 : null,
+      );
       if (recommendations.isNotEmpty) {
-        // Replace the upcoming queue with these new recommendations
-        _repo.replaceQueueAfter(_currentIndex, recommendations);
+        // Replace the upcoming queue with the engine-ranked recommendations
+        final targetIndex = replaceIndex ?? _currentIndex;
+        _repo.replaceQueueAfter(targetIndex, recommendations);
         _songs = _repo.getSongs();
         notifyListeners();
       }
@@ -239,7 +291,7 @@ class HomeController extends ChangeNotifier {
   void removeFromQueue(int index) {
     _repo.removeFromQueue(index);
     _songs = _repo.getSongs();
-    
+
     // If we removed the currently playing song... wait, usually you can't remove the currently playing song from the queue view easily, but if they do, we should handle it.
     // For now, if index <= _currentIndex, we need to adjust _currentIndex.
     if (index < _currentIndex) {
@@ -248,7 +300,7 @@ class HomeController extends ChangeNotifier {
       // If they removed the current song, just skip to next
       skipToNext();
     }
-    
+
     notifyListeners();
   }
 
@@ -281,7 +333,8 @@ class HomeController extends ChangeNotifier {
     await play();
   }
 
-  Future<void> skipToNext() async {
+  Future<void> skipToNext({bool isAutoAdvance = false}) async {
+    _recordInteractionForCurrent();
     if (_currentIndex < _songs.length - 1) {
       final nextIndex = _currentIndex + 1;
       _currentIndex = nextIndex;
@@ -291,15 +344,16 @@ class HomeController extends ChangeNotifier {
       _playbackState = PlaybackState.idle;
       _programmaticNav = true;
       notifyListeners();
-      
+
       _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(nextIndex));
       _checkAndFetchMore();
-      await play();
+      await play(isUserInitiated: !isAutoAdvance);
     }
   }
 
   Future<void> skipToPrev() async {
+    _recordInteractionForCurrent();
     if (_currentIndex > 0) {
       final prevIndex = _currentIndex - 1;
       _currentIndex = prevIndex;
@@ -309,7 +363,7 @@ class HomeController extends ChangeNotifier {
       _playbackState = PlaybackState.idle;
       _programmaticNav = true;
       notifyListeners();
-      
+
       _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(prevIndex));
       await play();
@@ -339,18 +393,45 @@ class HomeController extends ChangeNotifier {
       if (nextIndex < _songs.length) {
         final nextSong = _songs[nextIndex];
 
-        // Image precaching
-        final imageProvider = NetworkImage(nextSong.artwork);
-        imageProvider.resolve(const ImageConfiguration());
+        // Image precaching (MUST MATCH ArtworkWidget memCacheWidth to share cache key!)
+        final imageProvider = CachedNetworkImageProvider(
+          nextSong.artwork,
+          maxWidth: 800,
+          errorListener: (err) => debugPrint('Prefetch image error ignored'),
+        );
+        imageProvider
+            .resolve(const ImageConfiguration())
+            .addListener(
+              ImageStreamListener(
+                (info, sync) {},
+                onError: (err, stack) =>
+                    debugPrint('Prefetch image stream error ignored'),
+              ),
+            );
+
+        // Precache the tiny 12px background variant to completely eliminate disk/decode hiccups during swipe
+        final bgProvider = ResizeImage(imageProvider, width: 12);
+        bgProvider
+            .resolve(const ImageConfiguration())
+            .addListener(
+              ImageStreamListener(
+                (info, sync) {},
+                onError: (err, stack) =>
+                    debugPrint('Prefetch background stream error ignored'),
+              ),
+            );
 
         // Audio stream pre-extraction
         final cached = _streamCache[nextSong.id];
         if (cached == null || cached.isExpired) {
-          _extractor.extractStream(nextSong).then((stream) {
-            _streamCache[nextSong.id] = stream;
-          }).catchError((_) {
-            // Ignored
-          });
+          _extractor
+              .extractStream(nextSong)
+              .then((stream) {
+                _streamCache[nextSong.id] = stream;
+              })
+              .catchError((_) {
+                // Ignored
+              });
         }
       }
     }
@@ -394,10 +475,19 @@ class HomeController extends ChangeNotifier {
       _playbackState = state;
       if (state != PlaybackState.error) _error = null;
       if (state == PlaybackState.error) {
-         print('EXOPLAYER NATIVE ERROR: ${_player.lastError}');
-         _error = _player.lastError;
+        final currentError = _player.lastError;
+        print('EXOPLAYER NATIVE ERROR: $currentError');
+
+        if (currentError is StreamExpiredError) {
+          // Silent recovery for expired streams
+          _handleError(currentError);
+        } else {
+          _error = currentError;
+          notifyListeners();
+        }
+      } else {
+        notifyListeners();
       }
-      notifyListeners();
     });
 
     _player.positionStream.listen((pos) {
@@ -409,7 +499,12 @@ class HomeController extends ChangeNotifier {
     });
 
     _player.endedStream.listen((_) {
-      skipToNext();
+      if (_isLoopOne) {
+        seek(Duration.zero);
+        play(isUserInitiated: false);
+      } else {
+        skipToNext(isAutoAdvance: true);
+      }
     });
 
     _player.skipNextStream.listen((_) {

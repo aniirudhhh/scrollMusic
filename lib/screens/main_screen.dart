@@ -4,6 +4,7 @@ import 'search/search_screen.dart';
 import 'profile/profile_screen.dart';
 import '../widgets/floating_navbar.dart';
 import '../widgets/dynamic_global_background.dart';
+import '../widgets/mini_player.dart';
 
 final GlobalKey<MainScreenState> mainScreenKey = GlobalKey<MainScreenState>();
 
@@ -54,6 +55,21 @@ class MainScreenState extends State<MainScreen> {
           IndexedStack(
             index: _currentIndex,
             children: _pages,
+          ),
+          
+          // Mini Player overlay (only shows on Search and Library tabs)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOutCubic,
+            left: 0,
+            right: 0,
+            bottom: _currentIndex == 0 ? -100 : 100, // Hide when on Home tab, show above navbar otherwise
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+              opacity: _currentIndex == 0 ? 0.0 : 1.0,
+              child: const MiniPlayer(),
+            ),
           ),
           
           // Floating Navigation Bar overlay

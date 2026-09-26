@@ -46,6 +46,11 @@ flutter:
   assets:
     - assets/
 
+  fonts:
+    - family: GoogleSansFlex
+      fonts:
+        - asset: assets/gflex_variable.ttf
+
 flutter_launcher_icons:
   android: true
   ios: false

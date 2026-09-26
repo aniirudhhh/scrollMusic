@@ -168,7 +168,14 @@ class NativePlaybackManager implements PlaybackManager {
 
       case 'error':
         final message = event['message'] as String? ?? 'Playback error';
-        _lastError = PlaybackError(message);
+        final code = event['code'] as int?;
+        
+        // ERROR_CODE_IO_BAD_HTTP_STATUS is 2004 in ExoPlayer, usually a 403 Forbidden for expired YT links
+        if (code == 2004) {
+          _lastError = const StreamExpiredError();
+        } else {
+          _lastError = PlaybackError(message);
+        }
         _setState(PlaybackState.error);
     }
   }

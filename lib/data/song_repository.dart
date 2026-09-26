@@ -1,12 +1,17 @@
 import '../models/song.dart';
 import '../extraction/extraction_service.dart';
+import '../recommendation/recommendation_engine.dart';
 
 /// Loads and provides the song catalog dynamically.
 /// Prevents duplicates and maintains a smooth infinite stream.
 class SongRepository {
-  SongRepository({required this.extractionService});
+  SongRepository({
+    required this.extractionService,
+    required this.recommendationEngine,
+  });
 
   final ExtractionService extractionService;
+  final RecommendationEngine recommendationEngine;
 
   final List<Song> _songs = [];
   final Set<String> _seenIds = {};
@@ -91,7 +96,7 @@ class SongRepository {
     if (_isLoading) return false;
     _isLoading = true;
     try {
-      final newSongs = await extractionService.fetchDiscoveryFeed();
+      final newSongs = await recommendationEngine.getRecommendedFeed(limit: 10);
       var addedCount = 0;
       for (final s in newSongs) {
         if (_seenIds.add(s.id)) {
@@ -112,7 +117,11 @@ class SongRepository {
     if (_isLoading) return false;
     _isLoading = true;
     try {
-      final newSongs = await extractionService.fetchRecommendations(song.id);
+      // In a recommendation engine world, related fetches are still useful, 
+      // but let's route them through the engine as well if we want diversification,
+      // or just keep native related for immediate "Up Next" cohesion.
+      // We will stick to the engine for now so scoring applies.
+      final newSongs = await recommendationEngine.getRecommendedFeed(limit: 10);
       var addedCount = 0;
       for (final s in newSongs) {
         if (_seenIds.add(s.id)) {

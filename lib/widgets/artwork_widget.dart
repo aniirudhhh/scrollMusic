@@ -21,29 +21,28 @@ class ArtworkWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
-      tag: 'artwork_$songId',
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: CachedNetworkImage(
-          imageUrl: artworkUrl,
-          fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 150),
-          placeholder: (_, _) => _Placeholder(),
-          errorWidget: (_, _, _) {
-            // If high-res thumbnail 404s, seamlessly fallback to standard HQ thumbnail
-            if (fallbackUrl != null && fallbackUrl!.isNotEmpty && fallbackUrl != artworkUrl) {
-              return CachedNetworkImage(
-                imageUrl: fallbackUrl!,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 150),
-                placeholder: (_, _) => _Placeholder(),
-                errorWidget: (_, _, _) => _ErrorArtwork(),
-              );
-            }
-            return _ErrorArtwork();
-          },
-        ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: CachedNetworkImage(
+        imageUrl: artworkUrl,
+        fit: BoxFit.cover,
+        memCacheWidth: 800, // Downscale to prevent jank
+        fadeInDuration: const Duration(milliseconds: 150),
+        placeholder: (_, _) => _Placeholder(),
+        errorWidget: (_, _, _) {
+          // If high-res thumbnail 404s, seamlessly fallback to standard HQ thumbnail
+          if (fallbackUrl != null && fallbackUrl!.isNotEmpty && fallbackUrl != artworkUrl) {
+            return CachedNetworkImage(
+              imageUrl: fallbackUrl!,
+              fit: BoxFit.cover,
+              memCacheWidth: 800,
+              fadeInDuration: const Duration(milliseconds: 150),
+              placeholder: (_, _) => _Placeholder(),
+              errorWidget: (_, _, _) => _ErrorArtwork(),
+            );
+          }
+          return _ErrorArtwork();
+        },
       ),
     )
         .animate()

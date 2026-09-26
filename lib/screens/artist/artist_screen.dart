@@ -9,10 +9,11 @@ import '../../data/library_manager.dart';
 import '../../core/utils/app_toast.dart';
 import '../../data/yt_music_sync_service.dart';
 import '../../screens/home/home_controller.dart';
+import '../../widgets/mini_player.dart';
 
 class ArtistScreen extends StatefulWidget {
   final Artist? passedArtist;
-  
+
   const ArtistScreen({super.key, Artist? artist}) : passedArtist = artist;
 
   @override
@@ -25,7 +26,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
   Artist? _artist;
   String _bio = '';
   List<Song> _topSongs = [];
-  
+
   final ScrollController _scrollController = ScrollController();
   bool _isScrolled = false;
 
@@ -51,10 +52,12 @@ class _ArtistScreenState extends State<ArtistScreen> {
   }
 
   Future<void> _fetchData() async {
-    final searchName = widget.passedArtist?.name ?? "Olivia Beits"; // fallback for dummy testing
-    
+    final searchName =
+        widget.passedArtist?.name ??
+        "Olivia Beits"; // fallback for dummy testing
+
     final details = await YTMusicSyncService.fetchArtistDetails(searchName);
-    
+
     if (details != null && mounted) {
       setState(() {
         _artist = Artist(
@@ -79,22 +82,31 @@ class _ArtistScreenState extends State<ArtistScreen> {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFF0F0F13),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFFF2D55))),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF2D55)),
+        ),
       );
     }
 
     // Use fetched artist, or passed artist, or a complete dummy
-    final artist = _artist ?? widget.passedArtist ?? const Artist(
-      id: "dummy_artist_1",
-      name: "Olivia Beits",
-      imageUrl: "https://images.unsplash.com/photo-1526478806334-5fd488fcaabc?auto=format&fit=crop&q=80&w=1000",
-    );
-    
+    final artist =
+        _artist ??
+        widget.passedArtist ??
+        const Artist(
+          id: "dummy_artist_1",
+          name: "Olivia Beits",
+          imageUrl:
+              "https://images.unsplash.com/photo-1526478806334-5fd488fcaabc?auto=format&fit=crop&q=80&w=1000",
+        );
+
     final String artistName = artist.name;
-    final String artistHandle = "@${artistName.replaceAll(' ', '').toLowerCase()}";
-    final String artistImage = artist.imageUrl.isNotEmpty ? artist.imageUrl : "https://images.unsplash.com/photo-1526478806334-5fd488fcaabc?auto=format&fit=crop&q=80&w=1000";
+    final String artistHandle =
+        "@${artistName.replaceAll(' ', '').toLowerCase()}";
+    final String artistImage = artist.imageUrl.isNotEmpty
+        ? artist.imageUrl
+        : "https://images.unsplash.com/photo-1526478806334-5fd488fcaabc?auto=format&fit=crop&q=80&w=1000";
     final String artistId = artist.id;
-    
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
       body: Stack(
@@ -130,7 +142,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
               ],
             ),
           ),
-          
+
           // 2. Scrollable Content
           CustomScrollView(
             controller: _scrollController,
@@ -162,7 +174,11 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         color: Colors.black.withOpacity(0.3),
                         shape: BoxShape.circle,
                       ),
-                      child: const HugeIcon(icon: HugeIcons.strokeRoundedArrowLeft01, size: 20, color: Colors.white),
+                      child: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedArrowLeft01,
+                        size: 20,
+                        color: Colors.white,
+                      ),
                     ),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -177,18 +193,24 @@ class _ArtistScreenState extends State<ArtistScreen> {
                           color: Colors.black.withOpacity(0.3),
                           shape: BoxShape.circle,
                         ),
-                        child: const HugeIcon(icon: HugeIcons.strokeRoundedMoreVertical, size: 20, color: Colors.white),
+                        child: const HugeIcon(
+                          icon: HugeIcons.strokeRoundedMoreVertical,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                       ),
                       onPressed: () {},
                     ),
                   ),
                 ],
               ),
-              
+
               SliverToBoxAdapter(
-                child: SizedBox(height: MediaQuery.of(context).size.height * 0.35),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.35,
+                ),
               ),
-              
+
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -214,9 +236,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       Row(
                         children: [
                           Expanded(
@@ -224,20 +246,37 @@ class _ArtistScreenState extends State<ArtistScreen> {
                               height: 56,
                               child: Consumer<LibraryManager>(
                                 builder: (context, library, _) {
-                                  final isFollowed = library.isArtistFollowed(artistId);
+                                  final isFollowed = library.isArtistFollowed(
+                                    artistId,
+                                  );
                                   return ElevatedButton(
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: isFollowed ? Colors.transparent : Colors.white,
-                                      foregroundColor: isFollowed ? Colors.white : Colors.black,
+                                      backgroundColor: isFollowed
+                                          ? Colors.transparent
+                                          : Colors.white,
+                                      foregroundColor: isFollowed
+                                          ? Colors.white
+                                          : Colors.black,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(28),
-                                        side: isFollowed ? BorderSide(color: Colors.white.withOpacity(0.3)) : BorderSide.none,
+                                        side: isFollowed
+                                            ? BorderSide(
+                                                color: Colors.white.withOpacity(
+                                                  0.3,
+                                                ),
+                                              )
+                                            : BorderSide.none,
                                       ),
                                       elevation: 0,
                                     ),
                                     onPressed: () {
                                       library.toggleFollowArtist(artist);
-                                      AppToast.show(context, isFollowed ? 'Unfollowed' : 'Following $artistName');
+                                      AppToast.show(
+                                        context,
+                                        isFollowed
+                                            ? 'Unfollowed'
+                                            : 'Following $artistName',
+                                      );
                                     },
                                     child: Text(
                                       isFollowed ? 'Following' : 'Follow',
@@ -258,16 +297,22 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.1),
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.1),
+                              ),
                             ),
                             child: IconButton(
-                              icon: const HugeIcon(icon: HugeIcons.strokeRoundedNotification02, size: 24, color: Colors.white),
+                              icon: const HugeIcon(
+                                icon: HugeIcons.strokeRoundedNotification02,
+                                size: 24,
+                                color: Colors.white,
+                              ),
                               onPressed: () {},
                             ),
                           ),
                         ],
                       ),
-                      
+
                       if (_bio.isNotEmpty) ...[
                         const SizedBox(height: 32),
                         GestureDetector(
@@ -284,9 +329,13 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(20),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1), // Translucent background
+                                  color: Colors.white.withOpacity(
+                                    0.1,
+                                  ), // Translucent background
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.2),
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,7 +343,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                     Text(
                                       _bio,
                                       maxLines: _isBioExpanded ? null : 4,
-                                      overflow: _isBioExpanded ? TextOverflow.visible : TextOverflow.fade,
+                                      overflow: _isBioExpanded
+                                          ? TextOverflow.visible
+                                          : TextOverflow.fade,
                                       style: TextStyle(
                                         color: Colors.white.withOpacity(0.9),
                                         fontSize: 15,
@@ -303,7 +354,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      _isBioExpanded ? 'Show less' : 'Show more',
+                                      _isBioExpanded
+                                          ? 'Show less'
+                                          : 'Show more',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 14,
@@ -317,72 +370,103 @@ class _ArtistScreenState extends State<ArtistScreen> {
                           ),
                         ),
                       ],
-                      
+
                       if (_topSongs.isNotEmpty) ...[
                         const SizedBox(height: 32),
                         const Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'Songs',
-                            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
-                        ..._topSongs.map((song) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: InkWell(
-                            onTap: () {
-                              context.read<HomeController>().playNewQueue([song]);
-                              AppToast.show(context, 'Playing ${song.title}');
-                            },
-                            child: Row(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: CachedNetworkImage(
-                                    imageUrl: song.artwork,
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
+                        ..._topSongs.map(
+                          (song) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: InkWell(
+                              onTap: () {
+                                context.read<HomeController>().playNewQueue([
+                                  song,
+                                ]);
+                                AppToast.show(context, 'Playing ${song.title}');
+                              },
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: CachedNetworkImage(
+                                      imageUrl: song.artwork,
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        song.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        song.artist,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
-                                      ),
-                                    ],
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          song.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          song.artist,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(
+                                              0.6,
+                                            ),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: const HugeIcon(icon: HugeIcons.strokeRoundedMoreVerticalCircle01, color: Colors.white54, size: 24),
-                                  onPressed: () {},
-                                ),
-                              ],
+                                  IconButton(
+                                    icon: const HugeIcon(
+                                      icon: HugeIcons
+                                          .strokeRoundedMoreVerticalCircle01,
+                                      color: Colors.white54,
+                                      size: 24,
+                                    ),
+                                    onPressed: () {},
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        )),
+                        ),
                       ],
-                      
+
                       const SizedBox(height: 100),
                     ],
                   ),
                 ),
               ),
             ],
+          ),
+
+          // Mini Player overlay
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 30, // Breathing room from bottom
+            child: MiniPlayer(),
           ),
         ],
       ),

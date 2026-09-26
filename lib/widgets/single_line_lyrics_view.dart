@@ -132,7 +132,7 @@ class _SingleLineLyricsViewState extends State<SingleLineLyricsView> {
       onTap: widget.onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        padding: EdgeInsets.zero,
         color: Colors.transparent, // Expand hit area
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
@@ -170,7 +170,7 @@ class _SingleLineLyricsViewState extends State<SingleLineLyricsView> {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.left,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Colors.white.withOpacity(0.9),
             ),

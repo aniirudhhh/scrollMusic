@@ -19,25 +19,28 @@ class DynamicGlobalBackground extends StatelessWidget {
             // Base dark color
             Container(color: const Color(0xFF050505)),
             
-            // Blurred Artwork
+            // Blurred Artwork via hardware upscaling (no ImageFilter.blur)
             if (currentSong != null)
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 1200),
                 transitionBuilder: (child, animation) {
                   return FadeTransition(opacity: animation, child: child);
                 },
-                child: ImageFiltered(
+                child: Container(
                   key: ValueKey(currentSong.id),
-                  imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-                  child: Transform.scale(
-                    scale: 1.2, // prevent edges from showing without blur
-                    child: Container(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: CachedNetworkImageProvider(currentSong.artwork),
-                          fit: BoxFit.cover,
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
+                      image: ResizeImage(
+                        CachedNetworkImageProvider(
+                          currentSong.artwork,
+                          maxWidth: 800, // Same cache key as the rest of the app
+                          errorListener: (err) => debugPrint('Background image error ignored'),
                         ),
+                        width: 12, // Extremely tiny to force natural hardware blur on upscale
                       ),
+                      fit: BoxFit.cover,
+                      // Hardware bilinear filtering creates the smooth blur for free
+                      filterQuality: FilterQuality.low, 
                     ),
                   ),
                 ),

@@ -23,12 +23,14 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _pageController = PageController();
     // Force status bar icons to light (white) on our dark UI.
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.black,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
 
     // Init after first frame so the loading widget can show.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -50,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _syncPage() {
     final controller = context.read<HomeController>();
     final target = controller.currentIndex;
-    
+
     if (_pageController.hasClients) {
       final currentPage = _pageController.page?.round();
       if (currentPage != target) {
@@ -78,46 +80,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
-      body: Consumer<HomeController>(
-        builder: (context, controller, _) {
-          if (!controller.isInitialized) {
+      body: Selector<HomeController, _HomeListState>(
+        selector: (context, controller) => _HomeListState(
+          isInitialized: controller.isInitialized,
+          songsLength: controller.songs.length,
+          isLoadingMore: controller.isLoadingMore,
+        ),
+        builder: (context, state, _) {
+          final controller = context.read<HomeController>();
+
+          if (!state.isInitialized) {
             return const _SplashLoading();
           }
 
-          if (controller.songs.isEmpty) {
+          if (state.songsLength == 0) {
             return const _EmptyState();
           }
 
           return PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
-            physics: const PageScrollPhysics(parent: ClampingScrollPhysics()),
-            // Keep only prev + current + next alive.
-            itemCount: controller.songs.length + (controller.isLoadingMore ? 1 : 0),
+            physics: const PageScrollPhysics(),
+            // Keep prev + current + next alive to completely eliminate scroll stutter
+            allowImplicitScrolling: true,
+            itemCount: state.songsLength + (state.isLoadingMore ? 1 : 0),
             onPageChanged: controller.onPageChanged,
             itemBuilder: (context, index) {
-              if (index >= controller.songs.length) {
+              if (index >= state.songsLength) {
                 return const _SplashLoading();
               }
 
               final song = controller.songs[index];
-              final isCurrent = index == controller.currentIndex;
 
-              return SongPage(
-                song: song,
-                // Only the current page shows live playback state.
-                // Neighbors show idle so they don't flicker when preloading.
-                playbackState: isCurrent
-                    ? controller.playbackState
-                    : PlaybackState.idle,
-                positionNotifier: controller.positionNotifier,
-                isCurrent: isCurrent,
-                durationNotifier: controller.durationNotifier,
-                onPlayPause: controller.togglePlayPause,
-                onSeek: controller.seek,
-                onSkipNext: controller.skipToNext,
-                onSkipPrev: controller.skipToPrev,
-              );
+              return SongPage(key: ValueKey(song.id), song: song, index: index);
             },
           );
         },
@@ -166,4 +161,28 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeListState {
+  final bool isInitialized;
+  final int songsLength;
+  final bool isLoadingMore;
+
+  const _HomeListState({
+    required this.isInitialized,
+    required this.songsLength,
+    required this.isLoadingMore,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _HomeListState &&
+        other.isInitialized == isInitialized &&
+        other.songsLength == songsLength &&
+        other.isLoadingMore == isLoadingMore;
+  }
+
+  @override
+  int get hashCode => Object.hash(isInitialized, songsLength, isLoadingMore);
 }

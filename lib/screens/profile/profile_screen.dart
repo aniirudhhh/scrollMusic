@@ -138,10 +138,109 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
 
-          // We can add a "Recently Added" grid section here in the future
+          // Recently Played Grid
+          const SliverToBoxAdapter(
+            child: _RecentlyPlayedGrid(),
+          ),
+
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
+    );
+  }
+}
+
+class _RecentlyPlayedGrid extends StatelessWidget {
+  const _RecentlyPlayedGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<LibraryManager>(
+      builder: (context, library, _) {
+        final recentSongs = library.recentlyPlayed.take(20).toList(); // Increased to 20 songs
+        if (recentSongs.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Recently Played',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.8, // Adjust for title/artist text below image
+                ),
+                itemCount: recentSongs.length,
+                itemBuilder: (context, index) {
+                  final song = recentSongs[index];
+                  return InkWell(
+                    onTap: () {
+                      context.read<HomeController>().playNewQueue([song]);
+                      AppToast.show(context, 'Playing ${song.title}');
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: song.artwork,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              errorWidget: (_, __, ___) => Container(
+                                color: Colors.white.withOpacity(0.1),
+                                child: const HugeIcon(icon: HugeIcons.strokeRoundedMusicNote01, color: Colors.white54, size: 32),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          song.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          song.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

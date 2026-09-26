@@ -21,7 +21,7 @@ class DiscoveryManager {
         // Dynamic components for high variety initial feeds
         private val BHOJPURI_SINGERS = listOf(
             "Pawan Singh", "Khesari Lal Yadav", "Shilpi Raj", "Ritesh Pandey", 
-            "Pramod Premi", "Arvind Akela Kallu", "Neelkamal Singh", "Gunjan Singh"
+            "Pramod Premi", "Arvind Akela Kallu", "Neelkamal Singh", "Gunjan Singh", "Raushan Rohi"
         )
         private val BHOJPURI_STYLES = listOf(
             "superhit songs audio", "dj remix audio", "romantic songs audio",

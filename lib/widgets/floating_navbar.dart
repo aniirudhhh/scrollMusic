@@ -21,31 +21,55 @@ class FloatingNavbar extends StatelessWidget {
         borderRadius: BorderRadius.circular(50),
         tintColor: const Color(0xFF1E1E1E).withValues(alpha: 0.7), // Slightly darker to make white pill pop
         shadowElevation: 20,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _NavItem(
-              iconData: HugeIcons.strokeRoundedHome02,
-              label: 'Home',
-              isSelected: currentIndex == 0,
-              onTap: () => onTabSelected(0),
-            ),
-            const SizedBox(width: 4),
-            _NavItem(
-              iconData: HugeIcons.strokeRoundedSearch01,
-              label: 'Search',
-              isSelected: currentIndex == 1,
-              onTap: () => onTabSelected(1),
-            ),
-            const SizedBox(width: 4),
-            _NavItem(
-              iconData: HugeIcons.strokeRoundedFolderLibrary,
-              label: 'Library',
-              isSelected: currentIndex == 2,
-              onTap: () => onTabSelected(2),
-            ),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: SizedBox(
+          width: 86 * 3 + 8, // 3 items (86 each) + 2 spacers (4 each)
+          height: 56,
+          child: Stack(
+            children: [
+              // Bouncy sliding indicator
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutBack, // Softer, smoother bouncy animation
+                left: currentIndex * (86.0 + 4.0),
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 86,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+              ),
+              // Nav items
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _NavItem(
+                    iconData: HugeIcons.strokeRoundedHome02,
+                    label: 'Home',
+                    isSelected: currentIndex == 0,
+                    onTap: () => onTabSelected(0),
+                  ),
+                  const SizedBox(width: 4),
+                  _NavItem(
+                    iconData: HugeIcons.strokeRoundedSearch01,
+                    label: 'Search',
+                    isSelected: currentIndex == 1,
+                    onTap: () => onTabSelected(1),
+                  ),
+                  const SizedBox(width: 4),
+                  _NavItem(
+                    iconData: HugeIcons.strokeRoundedFolderLibrary,
+                    label: 'Library',
+                    isSelected: currentIndex == 2,
+                    onTap: () => onTabSelected(2),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -72,15 +96,10 @@ class _NavItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutExpo,
+      child: Container(
         width: 86, // Wide enough for text
         height: 56, // Reduced height
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(28), // Perfect pill shape
-        ),
+        color: Colors.transparent, // Keep hit area full size
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

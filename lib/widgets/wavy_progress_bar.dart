@@ -21,7 +21,8 @@ class WavyProgressBar extends StatefulWidget {
   State<WavyProgressBar> createState() => _WavyProgressBarState();
 }
 
-class _WavyProgressBarState extends State<WavyProgressBar> with SingleTickerProviderStateMixin {
+class _WavyProgressBarState extends State<WavyProgressBar>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -111,60 +112,71 @@ class _WavyPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final centerY = size.height / 2;
     final thumbX = size.width * value;
-    
+
     final activePaint = Paint()
       ..color = activeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
+      ..strokeWidth = 8.0
       ..strokeCap = StrokeCap.round;
 
     final inactivePaint = Paint()
-      ..color = inactiveColor
+      ..color = activeColor.withOpacity(0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
+      ..strokeWidth = 8.0
       ..strokeCap = StrokeCap.round;
-      
-    final thumbPaint = Paint()
-      ..color = activeColor
-      ..style = PaintingStyle.fill;
 
-    // 1. Draw Active Track (Wavy)
+    // 1. Draw Inactive Track (Straight line)
+    // Add a gap of 12 pixels between the active track and inactive track
+    final inactiveStartX = math.min(thumbX + 12.0, size.width);
+    if (inactiveStartX < size.width) {
+      canvas.drawLine(
+        Offset(inactiveStartX, centerY),
+        Offset(size.width, centerY),
+        inactivePaint,
+      );
+    }
+
+    // 2. Draw Active Track (Wavy)
     final path = Path();
-    final waveAmplitude = 4.0;
-    final waveFrequency = 0.25; 
-    
+    final waveAmplitude = 2.5; // Much smaller amplitude (gentle wave)
+    final waveFrequency = 0.12; // Much longer wavelength (stretched out)
+
     path.moveTo(0, centerY);
-    
-    for (double x = 0; x <= thumbX; x += 2.0) {
-      // Smooth taper off at the ends so it connects nicely
+
+    for (double x = 0; x <= thumbX; x += 8.0) {
+      // Gentle taper only at the very start so it doesn't jump
       double taper = 1.0;
-      if (x < 10) {
-        taper = x / 10.0;
+      if (x < 12) {
+        taper = x / 12.0;
       }
-      if (thumbX - x < 15) {
-        taper = (thumbX - x) / 15.0;
-      }
-      
-      final y = centerY + math.sin((x * waveFrequency) - phase) * waveAmplitude * taper;
+      // Removed the end taper to let it act like a true chopped wave
+
+      final y =
+          centerY +
+          math.sin((x * waveFrequency) - phase) * waveAmplitude * taper;
       path.lineTo(x, y);
     }
-    
-    // Ensure it ends exactly at thumb center vertically
-    path.lineTo(thumbX, centerY);
+
+    // Ensure the wave reaches exactly the thumbX position
+    final finalY =
+        centerY + math.sin((thumbX * waveFrequency) - phase) * waveAmplitude;
+    path.lineTo(thumbX, finalY);
+
+    // Draw the active path
     canvas.drawPath(path, activePaint);
-    
-    // 2. Draw Inactive Track (Straight line)
-    canvas.drawLine(Offset(thumbX, centerY), Offset(size.width, centerY), inactivePaint);
-    
-    // 3. Draw Thumb
-    canvas.drawCircle(Offset(thumbX, centerY), 6.0, thumbPaint);
+
+    // Draw tiny dot at the very end of the inactive track
+    final endDotPaint = Paint()
+      ..color = activeColor.withOpacity(0.8)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size.width - 2, centerY), 2.5, endDotPaint);
   }
 
   @override
   bool shouldRepaint(covariant _WavyPainter oldDelegate) {
-    return oldDelegate.value != value || 
-           oldDelegate.phase != phase ||
-           oldDelegate.activeColor != activeColor ||
-           oldDelegate.inactiveColor != inactiveColor;
+    return oldDelegate.value != value ||
+        oldDelegate.phase != phase ||
+        oldDelegate.activeColor != activeColor ||
+        oldDelegate.inactiveColor != inactiveColor;
   }
 }
