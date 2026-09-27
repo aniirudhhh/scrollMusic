@@ -64,10 +64,11 @@ class ScrollMusicApp extends StatelessWidget {
             repository: SongRepository(
               extractionService: extractionService,
               recommendationEngine: recommendationEngine,
+              prefs: prefs,
             ),
             libraryManager: context.read<LibraryManager>(),
             recommendationEngine: recommendationEngine,
-          ),
+          )..init(),
         ),
       ],
       child: MaterialApp(

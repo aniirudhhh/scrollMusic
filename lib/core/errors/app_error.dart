@@ -2,6 +2,17 @@
 /// UI never sees raw exceptions — only [AppError] variants.
 sealed class AppError {
   const AppError();
+  
+  String get displayMessage {
+    return switch (this) {
+      NetworkError(message: final m) => m,
+      VideoUnavailableError(videoId: final id) => 'Video unavailable ($id)',
+      ExtractionError(cause: final c) => c,
+      StreamExpiredError() => 'Stream expired, retrying...',
+      PlaybackError(cause: final c) => c,
+      UnknownError(cause: final c) => c.toString(),
+    };
+  }
 }
 
 /// Network is unavailable or request timed out.

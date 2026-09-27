@@ -1,13 +1,16 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hugeicons/hugeicons.dart';
 import '../models/song.dart';
+import '../models/artist.dart';
 import '../screens/home/home_controller.dart';
+import '../screens/artist/artist_screen.dart';
 import '../data/library_manager.dart';
 import '../core/utils/app_toast.dart';
 import '../core/utils/sleep_timer.dart';
+import 'package:share_plus/share_plus.dart';
 import 'liquid_glass_surface.dart';
 
 class SongOptionsBottomSheet extends StatelessWidget {
@@ -166,7 +169,7 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   title: 'View Artist',
                   onTap: () {
                     Navigator.pop(context);
-                    AppToast.show(context, 'Artist view coming soon');
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artist: Artist(id: '', name: song.artist, imageUrl: ''))));
                   },
                 ),
                 _buildDivider(),
@@ -184,7 +187,7 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   title: 'Share',
                   onTap: () {
                     Navigator.pop(context);
-                    AppToast.show(context, 'Share coming soon', icon: HugeIcons.strokeRoundedShare01);
+                    final shareText = 'Listen to "${song.title}" by ${song.artist}\n\nhttps://music.youtube.com/watch?v=${song.id}'; Share.share(shareText, subject: 'Shared from ScrollMusic');
                   },
                 ),
               ],
@@ -459,3 +462,5 @@ void _showSleepTimerPicker(BuildContext context) {
     },
   );
 }
+
+

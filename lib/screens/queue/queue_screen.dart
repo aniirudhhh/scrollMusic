@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -21,91 +21,110 @@ class QueueScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LiquidGlassSurface(
-      blurBehind: true,
-      sigma: 40,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      tintColor: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
-      child: Column(
-        children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 20),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Up Next',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ),
-          ),
-          
-          Expanded(
-            child: Consumer<HomeController>(
-              builder: (context, controller, child) {
-                final songs = controller.songs;
-                final currentIndex = controller.currentIndex;
-                
-                if (songs.isEmpty || currentIndex >= songs.length) {
-                  return const Center(child: Text('Queue is empty', style: TextStyle(color: Colors.white54)));
-                }
-
-                // We only want to show the currently playing song (at top, non-reorderable)
-                // and the upcoming songs (reorderable).
-                final currentSong = songs[currentIndex];
-                final upcomingSongs = songs.sublist(currentIndex + 1);
-
-                return CustomScrollView(
-                  slivers: [
-                    // Now Playing (fixed)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        child: _QueueItem(song: currentSong, isCurrent: true),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(), // Dismiss on outside tap
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        snap: true,
+        snapSizes: const [0.55, 0.95],
+        builder: (context, scrollController) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {}, // Prevent taps on the glass from dismissing
+            child: LiquidGlassSurface(
+              blurBehind: true,
+              sigma: 40,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              tintColor: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
+              child: Column(
+                children: [
+                  // Drag Handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 12, bottom: 20),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    
-                    // Up Next list (reorderable)
-                    SliverReorderableList(
-                      itemCount: upcomingSongs.length,
-                      onReorder: (oldIndex, newIndex) {
-                        // The actual indices in the repository are offset by currentIndex + 1
-                        controller.reorderQueue(currentIndex + 1 + oldIndex, currentIndex + 1 + newIndex);
-                      },
-                      itemBuilder: (context, index) {
-                        final song = upcomingSongs[index];
-                        return _buildReorderableItem(
-                          context,
-                          song: song,
-                          index: index,
-                          globalIndex: currentIndex + 1 + index,
-                          controller: controller,
+                  ),
+                  
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Up Next',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  Expanded(
+                    child: Consumer<HomeController>(
+                      builder: (context, controller, child) {
+                        final songs = controller.songs;
+                        final currentIndex = controller.currentIndex;
+                        
+                        if (songs.isEmpty || currentIndex >= songs.length) {
+                          return const Center(child: Text('Queue is empty', style: TextStyle(color: Colors.white54)));
+                        }
+
+                        // We only want to show the currently playing song (at top, non-reorderable)
+                        // and the upcoming songs (reorderable).
+                        final currentSong = songs[currentIndex];
+                        final upcomingSongs = songs.sublist(currentIndex + 1);
+
+                        return CustomScrollView(
+                          controller: scrollController,
+                          physics: const ClampingScrollPhysics(),
+                          slivers: [
+                            // Now Playing (fixed)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                child: _QueueItem(song: currentSong, isCurrent: true),
+                              ),
+                            ),
+                            
+                            // Up Next list (reorderable)
+                            SliverReorderableList(
+                              itemCount: upcomingSongs.length,
+                              onReorder: (oldIndex, newIndex) {
+                                // The actual indices in the repository are offset by currentIndex + 1
+                                controller.reorderQueue(currentIndex + 1 + oldIndex, currentIndex + 1 + newIndex);
+                              },
+                              itemBuilder: (context, index) {
+                                final song = upcomingSongs[index];
+                                return _buildReorderableItem(
+                                  context,
+                                  song: song,
+                                  index: index,
+                                  globalIndex: currentIndex + 1 + index,
+                                  controller: controller,
+                                );
+                              },
+                            ),
+                          ],
                         );
                       },
                     ),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -134,7 +153,16 @@ class QueueScreen extends StatelessWidget {
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: _QueueItem(song: song, isCurrent: false),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                controller.jumpToIndex(globalIndex);
+              },
+              child: _QueueItem(song: song, isCurrent: false),
+            ),
+          ),
         ),
       ),
     );

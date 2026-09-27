@@ -29,7 +29,20 @@ class PlaybackService : MediaSessionService() {
                 return super.getAvailableCommands().buildUpon()
                     .add(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT)
                     .add(androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                     .build()
+            }
+
+            override fun hasNextMediaItem(): Boolean = true
+            override fun hasPreviousMediaItem(): Boolean = true
+
+            override fun seekToNextMediaItem() {
+                com.scrollmusic.scroll_music.playback.NativePlaybackManager.eventSink?.invoke(mapOf("type" to "skipNext"))
+            }
+
+            override fun seekToPreviousMediaItem() {
+                com.scrollmusic.scroll_music.playback.NativePlaybackManager.eventSink?.invoke(mapOf("type" to "skipPrev"))
             }
 
             override fun seekToNext() {

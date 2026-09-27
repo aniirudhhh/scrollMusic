@@ -66,98 +66,26 @@ class RecommendationEngine {
   }) async {
     try {
       final activeSeed = overrideSeedTrack ?? currentSeedTrack;
-      final activeAutoPlays = overrideConsecutiveAutoPlays ?? consecutiveAutoPlays;
 
-      // Pass the active session seed to fetch contextually relevant tracks
-      final candidateContext = await candidateGenerator.generateCandidates(
-        activeSeed,
-      );
-
-      if (candidateContext.allCandidates.isEmpty) {
-        // Cold start / Fallback
-        return await extractionService.fetchDiscoveryFeed();
-      }
-
-      List<Song> finalFeed = [];
-      String? lastArtist;
-      int consecutiveCount = 0;
-
-      // Mutable pool of candidates to select from iteratively
-      List<Song> pool = List.from(candidateContext.allCandidates);
-
-      // Iteratively pick the best song for each queue position
-      for (int i = 0; i < limit; i++) {
-        if (pool.isEmpty) break;
-
-        int queuePosition = i + 1; // 1-indexed
-
-        Song? bestCandidate;
-        double bestScore = double.negativeInfinity;
-
-        for (final candidate in pool) {
-          // Diversification check
-          bool skipForDiversification = false;
-          if (candidate.artist == lastArtist && consecutiveCount >= 2) {
-            // Relax the 2-consecutive-artist limit if we are early in the queue
-            // AND the artist matches the seed artist (let them hear a streak of the seed artist).
-            if (queuePosition > 3 ||
-                currentSeedTrack?.artist != candidate.artist) {
-              skipForDiversification = true;
-            }
+      if (activeSeed != null) {
+        // Fetch the perfectly sequenced Radio from YouTube Music
+        final ytMusicRadio = await extractionService.fetchRecommendations(activeSeed.id);
+        
+        if (ytMusicRadio.isNotEmpty) {
+          // Filter out tracks we have already played recently
+          final filtered = ytMusicRadio.where((song) {
+            return !_recentHistory.any((historySong) => historySong.id == song.id);
+          }).take(limit).toList();
+          
+          if (filtered.isNotEmpty) {
+            return filtered;
           }
-          if (skipForDiversification) continue;
-
-          // Score for this specific queue position
-          double score = scoringEngine.scoreSong(
-            song: candidate,
-            recentHistory: _recentHistory,
-            seedTrack: activeSeed,
-            seedRelatedRanks: candidateContext.seedRelatedRanks,
-            queuePosition: queuePosition,
-            consecutiveAutoPlays: activeAutoPlays,
-          );
-
-          if (score > bestScore) {
-            bestScore = score;
-            bestCandidate = candidate;
-          }
-        }
-
-        // If diversification filtered out literally everything, just take the raw highest-scoring remaining
-        if (bestCandidate == null) {
-          bestCandidate = pool.first;
-          for (final candidate in pool) {
-            double score = scoringEngine.scoreSong(
-              song: candidate,
-              recentHistory: _recentHistory,
-              seedTrack: activeSeed,
-              seedRelatedRanks: candidateContext.seedRelatedRanks,
-              queuePosition: queuePosition,
-              consecutiveAutoPlays: activeAutoPlays,
-            );
-            if (score > bestScore) {
-              bestScore = score;
-              bestCandidate = candidate;
-            }
-          }
-        }
-
-        // Add winner to feed and remove from pool
-        finalFeed.add(bestCandidate!);
-        pool.remove(bestCandidate);
-
-        // Update diversification state
-        if (bestCandidate.artist == lastArtist) {
-          consecutiveCount++;
-        } else {
-          lastArtist = bestCandidate.artist;
-          consecutiveCount = 1;
         }
       }
 
-      return finalFeed;
+      // Cold start / Fallback to discovery feed
+      return await extractionService.fetchDiscoveryFeed();
     } catch (e) {
-      // Safe fallback
       return await extractionService.fetchDiscoveryFeed();
     }
   }

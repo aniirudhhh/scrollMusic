@@ -138,8 +138,8 @@ class _WavyPainter extends CustomPainter {
 
     // 2. Draw Active Track (Wavy)
     final path = Path();
-    final waveAmplitude = 2.5; // Much smaller amplitude (gentle wave)
-    final waveFrequency = 0.12; // Much longer wavelength (stretched out)
+    final waveAmplitude = 5.0; // Taller waves
+    final waveFrequency = 0.15; // Slightly reduced frequency to remove 1-2 waves
 
     path.moveTo(0, centerY);
 

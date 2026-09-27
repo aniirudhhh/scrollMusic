@@ -1,3 +1,5 @@
+﻿import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song.dart';
 import '../extraction/extraction_service.dart';
 import '../recommendation/recommendation_engine.dart';
@@ -8,14 +10,49 @@ class SongRepository {
   SongRepository({
     required this.extractionService,
     required this.recommendationEngine,
+    required this.prefs,
   });
 
   final ExtractionService extractionService;
   final RecommendationEngine recommendationEngine;
+  final SharedPreferences prefs;
 
-  final List<Song> _songs = [];
+  List<Song> _songs = [];
   final Set<String> _seenIds = {};
   bool _isLoading = false;
+
+  bool get isLoading => _isLoading;
+
+  void loadCache() {
+    final cache = prefs.getString('cached_feed');
+    if (cache != null && cache.isNotEmpty) {
+      try {
+        final List<dynamic> decoded = jsonDecode(cache);
+        _songs = decoded.map((e) => Song.fromJson(e as Map<String, dynamic>)).toList();
+        for (final s in _songs) {
+          _seenIds.add(s.id);
+        }
+      } catch (e) {
+        _songs.clear();
+        _seenIds.clear();
+      }
+    }
+  }
+
+  void saveUpcomingCache(int currentIndex) {
+    try {
+      final startIndex = (currentIndex + 1).clamp(0, _songs.length);
+      final upcoming = _songs.sublist(startIndex).take(15).toList();
+      // If the user reached the very end, save the last song just so we have something on boot
+      if (upcoming.isEmpty && _songs.isNotEmpty) {
+        upcoming.add(_songs.last);
+      }
+      if (upcoming.isNotEmpty) {
+        final encoded = jsonEncode(upcoming.map((e) => e.toJson()).toList());
+        prefs.setString('cached_feed', encoded);
+      }
+    } catch (_) {}
+  }
 
   /// Returns the full current song catalog.
   List<Song> getSongs() => _songs;
@@ -26,26 +63,27 @@ class SongRepository {
     _seenIds.add(song.id);
   }
 
+  void addSongLast(Song song) {
+    if (_seenIds.add(song.id)) {
+      _songs.add(song);
+    }
+  }
+
   /// Replaces all songs after [index] with [newSongs].
   void replaceQueueAfter(int index, List<Song> newSongs) {
-    // Remove all songs after index
     if (index + 1 < _songs.length) {
       final removed = _songs.sublist(index + 1);
       for (final s in removed) {
-        _seenIds.remove(s.id); // allow them to be re-added later if they show up in another feed
+        _seenIds.remove(s.id);
       }
       _songs.removeRange(index + 1, _songs.length);
     }
     
-    // Add new ones
     for (final s in newSongs) {
       if (_seenIds.add(s.id)) {
         _songs.add(s);
       } else {
-        _songs.add(s); // duplicates allowed in playlist flow, but seenIds tracks it?
-        // Wait, if we allow duplicates, seenIds is just for the discovery feed to prevent dupes.
-        // Actually, let's just add it and not worry about _seenIds rejecting it.
-        // If it's a dupe, that's fine for up next.
+        _songs.add(s);
       }
     }
   }
@@ -74,30 +112,30 @@ class SongRepository {
     final item = _songs.removeAt(oldIndex);
     _songs.insert(newIndex, item);
   }
-
-  /// Removes a song from the queue.
+  
   void removeFromQueue(int index) {
-    if (index < 0 || index >= _songs.length) return;
-    final item = _songs.removeAt(index);
-    // Don't remove from _seenIds, otherwise it could be re-added later, which is fine, 
-    // but the user explicitly removed it. Let's just leave it in seenIds.
+    if (index >= 0 && index < _songs.length) {
+      final removed = _songs.removeAt(index);
+      _seenIds.remove(removed.id);
+    }
   }
 
-  /// Adds a song to the very end of the queue.
-  void addSongLast(Song song) {
-    _songs.add(song);
-    // Don't worry about seenIds here for manual queuing
-  }
-
-  bool get isLoading => _isLoading;
-
-  /// Appends more songs by fetching a new discovery feed.
-  Future<bool> fetchMore() async {
+  Future<bool> fetchMore({bool isColdBootRefresh = false}) async {
     if (_isLoading) return false;
     _isLoading = true;
     try {
       final newSongs = await recommendationEngine.getRecommendedFeed(limit: 10);
       var addedCount = 0;
+      
+      if (isColdBootRefresh && newSongs.isNotEmpty && _songs.isNotEmpty) {
+        // Keep only the first song (currently playing), replace the rest with fresh feed
+        final firstSong = _songs.first;
+        _songs.clear();
+        _seenIds.clear();
+        _songs.add(firstSong);
+        _seenIds.add(firstSong.id);
+      }
+
       for (final s in newSongs) {
         if (_seenIds.add(s.id)) {
           _songs.add(s);
@@ -112,16 +150,14 @@ class SongRepository {
     }
   }
 
-  /// Appends more songs by fetching recommendations (related songs) to [song].
   Future<bool> fetchMoreRelated(Song song) async {
     if (_isLoading) return false;
     _isLoading = true;
     try {
-      // In a recommendation engine world, related fetches are still useful, 
-      // but let's route them through the engine as well if we want diversification,
-      // or just keep native related for immediate "Up Next" cohesion.
-      // We will stick to the engine for now so scoring applies.
-      final newSongs = await recommendationEngine.getRecommendedFeed(limit: 10);
+      final newSongs = await recommendationEngine.getRecommendedFeed(
+        limit: 10,
+        overrideSeedTrack: song,
+      );
       var addedCount = 0;
       for (final s in newSongs) {
         if (_seenIds.add(s.id)) {
@@ -136,12 +172,4 @@ class SongRepository {
       _isLoading = false;
     }
   }
-
-  /// Returns the song at [index], or null if out of range.
-  Song? songAt(int index) {
-    if (index < 0 || index >= _songs.length) return null;
-    return _songs[index];
-  }
-
-  int get length => _songs.length;
 }

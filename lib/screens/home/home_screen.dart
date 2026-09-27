@@ -3,11 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/playback_state.dart';
 import '../../widgets/song_page.dart';
+import '../../widgets/dynamic_single_color_background.dart';
 import '../main_screen.dart';
 import 'home_controller.dart';
 
 /// Root screen. Houses the vertical PageView and wires it to [HomeController].
-/// Minimal widget — layout and interaction only.
+/// Minimal widget â€” layout and interaction only.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -80,48 +81,58 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
-      body: Selector<HomeController, _HomeListState>(
-        selector: (context, controller) => _HomeListState(
-          isInitialized: controller.isInitialized,
-          songsLength: controller.songs.length,
-          isLoadingMore: controller.isLoadingMore,
-        ),
-        builder: (context, state, _) {
-          final controller = context.read<HomeController>();
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(child: DynamicSingleColorBackground()),
+          Selector<HomeController, _HomeListState>(
+            selector: (context, controller) => _HomeListState(
+              isInitialized: controller.isInitialized,
+              songsLength: controller.songs.length,
+              isLoadingMore: controller.isLoadingMore,
+            ),
+            builder: (context, state, _) {
+              final controller = context.read<HomeController>();
 
-          if (!state.isInitialized) {
-            return const _SplashLoading();
-          }
-
-          if (state.songsLength == 0) {
-            return const _EmptyState();
-          }
-
-          return PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            physics: const PageScrollPhysics(),
-            // Keep prev + current + next alive to completely eliminate scroll stutter
-            allowImplicitScrolling: true,
-            itemCount: state.songsLength + (state.isLoadingMore ? 1 : 0),
-            onPageChanged: controller.onPageChanged,
-            itemBuilder: (context, index) {
-              if (index >= state.songsLength) {
+              if (!state.isInitialized) {
                 return const _SplashLoading();
               }
 
-              final song = controller.songs[index];
+              if (state.songsLength == 0) {
+                return const _EmptyState();
+              }
 
-              return SongPage(key: ValueKey(song.id), song: song, index: index);
+              return PageView.builder(
+                controller: _pageController,
+                scrollDirection: Axis.vertical,
+                physics: const PageScrollPhysics(),
+                // Keep prev + current + next alive to completely eliminate scroll stutter
+                allowImplicitScrolling: true,
+                itemCount: state.songsLength + (state.isLoadingMore ? 1 : 0),
+                onPageChanged: controller.onPageChanged,
+                itemBuilder: (context, index) {
+                  if (index >= state.songsLength) {
+                    return const _SplashLoading();
+                  }
+
+                  final song = controller.songs[index];
+
+                  return SongPage(
+                    key: ValueKey(song.id),
+                    song: song,
+                    index: index,
+                  );
+                },
+              );
             },
-          );
-        },
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── Loading splash ────────────────────────────────────────────────────────
+// â”€â”€â”€ Loading splash â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _SplashLoading extends StatelessWidget {
   const _SplashLoading();
@@ -144,7 +155,7 @@ class _SplashLoading extends StatelessWidget {
   }
 }
 
-// ─── Empty state ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();

@@ -1,7 +1,10 @@
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
+import 'package:material_color_utilities/material_color_utilities.dart';
+import 'animated_playback_controls.dart';
 import '../data/library_manager.dart';
 import '../screens/home/home_controller.dart';
 import '../models/playback_state.dart';
@@ -29,9 +32,16 @@ class SongPage extends StatefulWidget {
   State<SongPage> createState() => _SongPageState();
 }
 
-class _SongPageState extends State<SongPage> {
+class _SongPageState extends State<SongPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   bool _showLyrics = false;
-  Color? _dominantColor;
+  Color? _primaryColor;
+  Color? _onPrimaryColor;
+  Color? _secondaryContainer;
+  Color? _onSecondaryContainer;
 
   void _scheduleColorExtraction() {
     Future.delayed(const Duration(milliseconds: 200), () {
@@ -59,7 +69,10 @@ class _SongPageState extends State<SongPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.song.artwork != widget.song.artwork) {
       _showLyrics = false;
-      _dominantColor = null; // reset to white instantly
+      _primaryColor = null;
+      _onPrimaryColor = null;
+      _secondaryContainer = null;
+      _onSecondaryContainer = null; // reset to white instantly
       _scheduleColorExtraction();
     }
   }
@@ -86,14 +99,19 @@ class _SongPageState extends State<SongPage> {
           final baseColor =
               palette.dominantColor?.color ?? palette.vibrantColor?.color;
           if (baseColor != null) {
-            // Convert to a soft, subtle light pastel version of the color
-            final hsl = HSLColor.fromColor(baseColor);
-            _dominantColor = hsl
-                .withLightness(0.85)
-                .withSaturation(0.4)
-                .toColor();
+            final hct = Hct.fromInt(baseColor.value);
+            final hue = hct.hue;
+            final chroma = math.max(hct.chroma, 30.0);
+            
+            _primaryColor = Color(Hct.from(hue, chroma, 80.0).toInt());
+            _onPrimaryColor = Color(Hct.from(hue, chroma, 20.0).toInt());
+            _secondaryContainer = Color(Hct.from(hue, chroma * 0.5, 35.0).toInt());
+            _onSecondaryContainer = Color(Hct.from(hue, chroma * 0.5, 90.0).toInt());
           } else {
-            _dominantColor = Colors.white;
+            _primaryColor = Colors.white;
+            _onPrimaryColor = Colors.black;
+            _secondaryContainer = Colors.white.withValues(alpha: 0.1);
+            _onSecondaryContainer = Colors.white;
           }
         });
       }
@@ -102,13 +120,14 @@ class _SongPageState extends State<SongPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Stack(
       fit: StackFit.expand,
       children: [
         // Removed duplicate local blurred background.
         // Handled globally by DynamicGlobalBackground.
 
-        // ── Main UI Overlay ────────────────────────────────────────────────
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Main UI Overlay Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -120,7 +139,7 @@ class _SongPageState extends State<SongPage> {
                   children: [
                     SizedBox(height: isSmallScreen ? 4 : 16),
 
-                    // ── Large Artwork or Lyrics ──────────────────────────────────
+                    // Ã¢â€â‚¬Ã¢â€â‚¬ Large Artwork or Lyrics Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -135,11 +154,13 @@ class _SongPageState extends State<SongPage> {
                                     });
                                   },
                                   child: Container(
-                                    color: Colors.transparent, // expand hit area
+                                    color:
+                                        Colors.transparent, // expand hit area
                                     child: Consumer<HomeController>(
                                       builder: (context, controller, _) {
                                         final isCurrent =
-                                            controller.currentIndex == widget.index;
+                                            controller.currentIndex ==
+                                            widget.index;
                                         return LyricsView(
                                           title: widget.song.title,
                                           artist: widget.song.artist,
@@ -172,8 +193,17 @@ class _SongPageState extends State<SongPage> {
                                       child: RepaintBoundary(
                                         child: ArtworkWidget(
                                           artworkUrl: widget.song.artwork,
-                                          fallbackUrl: widget.song.fallbackArtwork,
+                                          fallbackUrl:
+                                              widget.song.fallbackArtwork,
                                           songId: widget.song.id,
+                                          navDirection: context
+                                              .select<HomeController, double>(
+                                                (c) => c.navDirection,
+                                              ),
+                                          navCount: context
+                                              .select<HomeController, int>(
+                                                (c) => c.programmaticNavCount,
+                                              ),
                                         ),
                                       ),
                                     ),
@@ -196,7 +226,7 @@ class _SongPageState extends State<SongPage> {
                               key: const ValueKey('info_row'),
                               children: [
                                 SizedBox(height: isSmallScreen ? 8 : 24),
-                                // ── Info Row (Title, Artist, Like) ──────────────────────────
+                                // Ã¢â€â‚¬Ã¢â€â‚¬ Info Row (Title, Artist, Like) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
@@ -226,7 +256,9 @@ class _SongPageState extends State<SongPage> {
                                                   .split(
                                                     RegExp(r'(?:,\s*|\s+&\s+)'),
                                                   )
-                                                  .where((a) => a.trim().isNotEmpty)
+                                                  .where(
+                                                    (a) => a.trim().isNotEmpty,
+                                                  )
                                                   .map(
                                                     (artistName) => Padding(
                                                       padding:
@@ -263,13 +295,17 @@ class _SongPageState extends State<SongPage> {
                                                             fontWeight:
                                                                 FontWeight.w400,
                                                             color: Colors.white
-                                                                .withOpacity(0.7),
+                                                                .withOpacity(
+                                                                  0.7,
+                                                                ),
                                                             decoration:
                                                                 TextDecoration
                                                                     .underline,
-                                                            decorationColor: Colors
-                                                                .white
-                                                                .withOpacity(0.3),
+                                                            decorationColor:
+                                                                Colors.white
+                                                                    .withOpacity(
+                                                                      0.3,
+                                                                    ),
                                                           ),
                                                         ),
                                                       ),
@@ -288,7 +324,8 @@ class _SongPageState extends State<SongPage> {
                                         color: Colors.white,
                                         size: 28,
                                       ),
-                                      onPressed: () => QueueScreen.show(context),
+                                      onPressed: () =>
+                                          QueueScreen.show(context),
                                     ),
                                     _LikeButton(song: widget.song),
                                   ],
@@ -297,7 +334,9 @@ class _SongPageState extends State<SongPage> {
                             ),
                     ),
 
-                    SizedBox(height: isSmallScreen ? 2 : 6), // Gap between artist name and lyrics
+                    SizedBox(
+                      height: isSmallScreen ? 2 : 6,
+                    ), // Gap between artist name and lyrics
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: _showLyrics
@@ -324,10 +363,11 @@ class _SongPageState extends State<SongPage> {
 
                     // Gap removed to stack lyrics closer to progress bar
 
-                    // ── Progress Bar ────────────────────────────────────────────
+                    // Ã¢â€â‚¬Ã¢â€â‚¬ Progress Bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                     Consumer<HomeController>(
                       builder: (context, controller, _) {
-                        final isCurrent = controller.currentIndex == widget.index;
+                        final isCurrent =
+                            controller.currentIndex == widget.index;
                         final state = isCurrent
                             ? controller.playbackState
                             : PlaybackState.idle;
@@ -339,14 +379,14 @@ class _SongPageState extends State<SongPage> {
                           isPaused:
                               state != PlaybackState.playing &&
                               state != PlaybackState.loading,
-                          activeColor: _dominantColor ?? Colors.white,
+                          activeColor: _primaryColor ?? Colors.white,
                         );
                       },
                     ),
 
                     SizedBox(height: isSmallScreen ? 2 : 8),
 
-                    // ── Playback Controls Row ────────────────────────────────────
+                    // Ã¢â€â‚¬Ã¢â€â‚¬ Playback Controls Row Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -373,67 +413,57 @@ class _SongPageState extends State<SongPage> {
                             );
                           },
                         ),
-                        IconButton(
-                          iconSize: 36,
-                          icon: const Icon(
-                            Icons.skip_previous_rounded,
-                            color: Colors.white,
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Consumer<HomeController>(
+                              builder: (context, controller, _) {
+                                final isCurrent =
+                                    controller.currentIndex == widget.index;
+                                final state = isCurrent
+                                    ? controller.playbackState
+                                    : PlaybackState.idle;
+                                final bool isPlaying =
+                                    state == PlaybackState.playing ||
+                                    state == PlaybackState.buffering;
+
+                                return AnimatedPlaybackControls(
+                                  isPlaying: isPlaying,
+                                  height: isSmallScreen ? 56.0 : 72.0,
+                                  playPauseIconSize: isSmallScreen
+                                      ? 28.0
+                                      : 36.0,
+                                  iconSize: isSmallScreen ? 24.0 : 32.0,
+                                  colorPlayPause: _primaryColor ?? Colors.white,
+                                  tintPlayPauseIcon:
+                                      _onPrimaryColor ?? Colors.black,
+                                  colorPreviousButton:
+                                      _secondaryContainer ??
+                                      Colors.white.withValues(alpha: 0.1),
+                                  colorNextButton:
+                                      _secondaryContainer ??
+                                      Colors.white.withValues(alpha: 0.1),
+                                  tintPreviousIcon:
+                                      _onSecondaryContainer ?? Colors.white,
+                                  tintNextIcon:
+                                      _onSecondaryContainer ?? Colors.white,
+                                  onPrevious: () => controller.skipToPrev(),
+                                  onPlayPause: () =>
+                                      controller.togglePlayPause(),
+                                  onNext: () => controller.skipToNext(),
+                                );
+                              },
+                            ),
                           ),
-                          onPressed: () =>
-                              context.read<HomeController>().skipToPrev(),
-                        ),
-                        Consumer<HomeController>(
-                          builder: (context, controller, _) {
-                            final isCurrent =
-                                controller.currentIndex == widget.index;
-                            final state = isCurrent
-                                ? controller.playbackState
-                                : PlaybackState.idle;
-                            return _BouncingPlayButton(
-                              onTap: controller.togglePlayPause,
-                              child: Container(
-                                width: isSmallScreen ? 56 : 72,
-                                height: isSmallScreen ? 56 : 72,
-                                decoration: BoxDecoration(
-                                  color: _dominantColor ?? Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: HugeIcon(
-                                    icon:
-                                        state == PlaybackState.playing ||
-                                            state == PlaybackState.buffering
-                                        ? HugeIcons.strokeRoundedPause
-                                        : HugeIcons.strokeRoundedPlay,
-                                    color:
-                                        (_dominantColor != null &&
-                                            _dominantColor!.computeLuminance() <
-                                                0.5)
-                                        ? Colors.white
-                                        : Colors.black,
-                                    size: isSmallScreen ? 28.0 : 36.0,
-                                    strokeWidth:
-                                        1.5, // Matches the thin stroke style
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        IconButton(
-                          iconSize: 36,
-                          icon: const Icon(
-                            Icons.skip_next_rounded,
-                            color: Colors.white,
-                          ),
-                          onPressed: () =>
-                              context.read<HomeController>().skipToNext(),
                         ),
                         Consumer<HomeController>(
                           builder: (context, controller, child) {
                             return IconButton(
                               icon: HugeIcon(
-                                icon: HugeIcons.strokeRoundedArrowReloadHorizontal,
+                                icon: HugeIcons
+                                    .strokeRoundedArrowReloadHorizontal,
                                 size: 24.0,
                                 color: controller.isLoopOne
                                     ? Colors.greenAccent
@@ -457,7 +487,7 @@ class _SongPageState extends State<SongPage> {
 
                     SizedBox(height: isSmallScreen ? 8 : 16),
 
-                    // ── Footer Row ──────────────────────────────────────────────
+                    // Ã¢â€â‚¬Ã¢â€â‚¬ Footer Row Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -470,7 +500,11 @@ class _SongPageState extends State<SongPage> {
                           ),
                           onPressed: () {
                             final library = context.read<LibraryManager>();
-                            _showAddToPlaylistModal(context, library, widget.song);
+                            _showAddToPlaylistModal(
+                              context,
+                              library,
+                              widget.song,
+                            );
                           },
                         ),
                         IconButton(
@@ -493,7 +527,7 @@ class _SongPageState extends State<SongPage> {
                   ],
                 ),
               );
-            }
+            },
           ),
         ),
       ],
@@ -566,7 +600,7 @@ class _SongPageState extends State<SongPage> {
   }
 }
 
-// ─── Like Button ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Like Button Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 class _LikeButton extends StatelessWidget {
   const _LikeButton({required this.song});
   final Song song;
@@ -612,7 +646,7 @@ class _LikeButton extends StatelessWidget {
   }
 }
 
-// ─── Progress bar ──────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Progress bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 class _ProgressBar extends StatelessWidget {
   const _ProgressBar({
@@ -704,7 +738,7 @@ class _ProgressBar extends StatelessWidget {
   }
 }
 
-// ─── Bouncing Play Button ────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Bouncing Play Button Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 class _BouncingPlayButton extends StatefulWidget {
   const _BouncingPlayButton({required this.onTap, required this.child});
   final VoidCallback onTap;

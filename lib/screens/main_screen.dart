@@ -17,7 +17,7 @@ class MainScreen extends StatefulWidget {
 
 class MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  
+
   int get currentTab => _currentIndex;
 
   void switchToTab(int index) {
@@ -41,29 +41,28 @@ class MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent, // Background handled by DynamicGlobalBackground
-      resizeToAvoidBottomInset: false, // Prevents keyboard from pushing the floating navbar up
+      backgroundColor:
+          Colors.transparent, // Background handled by DynamicGlobalBackground
+      resizeToAvoidBottomInset:
+          false, // Prevents keyboard from pushing the floating navbar up
       extendBody: true, // Crucial for floating navbar to sit over content
       body: Stack(
         children: [
           // The dynamic liquid glass ambient background
-          const Positioned.fill(
-            child: DynamicGlobalBackground(),
-          ),
-          
+          const Positioned.fill(child: DynamicGlobalBackground()),
+
           // The underlying pages
-          IndexedStack(
-            index: _currentIndex,
-            children: _pages,
-          ),
-          
+          IndexedStack(index: _currentIndex, children: _pages),
+
           // Mini Player overlay (only shows on Search and Library tabs)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 500),
             curve: Curves.easeInOutCubic,
             left: 0,
             right: 0,
-            bottom: _currentIndex == 0 ? -100 : 100, // Hide when on Home tab, show above navbar otherwise
+            bottom: _currentIndex == 0
+                ? -100
+                : 100, // Hide when on Home tab, show above navbar otherwise
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeOut,
@@ -71,7 +70,7 @@ class MainScreenState extends State<MainScreen> {
               child: const MiniPlayer(),
             ),
           ),
-          
+
           // Floating Navigation Bar overlay
           Positioned(
             left: 0,

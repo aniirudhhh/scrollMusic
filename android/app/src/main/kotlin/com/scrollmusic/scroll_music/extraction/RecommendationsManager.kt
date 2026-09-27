@@ -1,4 +1,4 @@
-package com.scrollmusic.scroll_music.extraction
+﻿package com.scrollmusic.scroll_music.extraction
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +15,10 @@ class RecommendationsManager {
     private val client = OkHttpClient()
 
     suspend fun getRecommendations(videoId: String): List<Map<String, String>> = withContext(Dispatchers.IO) {
+        val cookie = android.webkit.CookieManager.getInstance().getCookie("https://music.youtube.com") ?: 
+                     android.webkit.CookieManager.getInstance().getCookie("https://youtube.com")
+        val isLoggedIn = cookie?.contains("SAPISID") == true
+
         val payload = JSONObject().apply {
             put("context", JSONObject().apply {
                 put("client", JSONObject().apply {
@@ -23,14 +27,26 @@ class RecommendationsManager {
                 })
             })
             put("videoId", videoId)
+            
+            if (isLoggedIn) {
+                // For authenticated users, the Radio engine generates perfect taste profiles
+                put("playlistId", "RDAMVM$videoId")
+            } else {
+                // Explicitly excluding RDAMVM for guests to prevent regional drift
+            }
         }
 
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url("https://music.youtube.com/youtubei/v1/next")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             .header("Origin", "https://music.youtube.com")
-            .build()
+
+        if (isLoggedIn && cookie != null) {
+            requestBuilder.header("Cookie", cookie)
+        }
+
+        val request = requestBuilder.build()
 
         val response = client.newCall(request).execute()
         if (!response.isSuccessful) {
@@ -43,13 +59,25 @@ class RecommendationsManager {
         val results = mutableListOf<Map<String, String>>()
         
         try {
-            val renderers = mutableListOf<JSONObject>()
-            collectRenderers(json, "musicResponsiveListItemRenderer", renderers)
-
-            for (item in renderers) {
-                val parsed = parseResponsiveListItem(item)
-                if (parsed != null && parsed["id"] != videoId) { // Skip the current song itself if it appears
+            val panelRenderers = mutableListOf<JSONObject>()
+            collectRenderers(json, "playlistPanelVideoRenderer", panelRenderers)
+            
+            for (item in panelRenderers) {
+                val parsed = parsePlaylistPanelVideoRenderer(item)
+                if (parsed != null && parsed["id"] != videoId) {
                     results.add(parsed)
+                }
+            }
+            
+            if (results.isEmpty()) {
+                val listRenderers = mutableListOf<JSONObject>()
+                collectRenderers(json, "musicResponsiveListItemRenderer", listRenderers)
+
+                for (item in listRenderers) {
+                    val parsed = parseResponsiveListItem(item)
+                    if (parsed != null && parsed["id"] != videoId) {
+                        results.add(parsed)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -59,7 +87,8 @@ class RecommendationsManager {
         results
     }
     
-    private fun collectRenderers(node: Any?, keyToFind: String, out: MutableList<JSONObject>) {
+    companion object {
+fun collectRenderers(node: Any?, keyToFind: String, out: MutableList<JSONObject>) {
         if (node is JSONObject) {
             val found = node.optJSONObject(keyToFind)
             if (found != null) {
@@ -76,7 +105,56 @@ class RecommendationsManager {
         }
     }
     
-    private fun parseResponsiveListItem(item: JSONObject): Map<String, String>? {
+    fun parsePlaylistPanelVideoRenderer(item: JSONObject): Map<String, String>? {
+        try {
+            val videoId = item.optString("videoId")
+            if (videoId.isNullOrBlank()) return null
+            
+            val lengthText = item.optJSONObject("lengthText")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text") ?: ""
+            if (lengthText.count { it == ':' } >= 2) return null
+            val mmssMatch = Regex("^(\\d{2,}):(\\d{2})$").find(lengthText)
+            if (mmssMatch != null) {
+                val minutes = mmssMatch.groupValues[1].toIntOrNull() ?: 0
+                if (minutes >= 15) return null
+            }
+            
+            val title = item.optJSONObject("title")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text") ?: "Unknown Title"
+            
+            val artistBuilder = StringBuilder()
+            val bylineRuns = item.optJSONObject("longBylineText")?.optJSONArray("runs")
+            if (bylineRuns != null) {
+                for (i in 0 until bylineRuns.length()) {
+                    val text = bylineRuns.optJSONObject(i)?.optString("text") ?: ""
+                    val trimmed = text.trim()
+                    if (trimmed == "•") break
+                    artistBuilder.append(text)
+                }
+            }
+            val artist = artistBuilder.toString().trim().ifBlank { "Unknown Artist" }
+            
+            var thumbnailUrl: String? = null
+            val thumbnails = item.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
+            if (thumbnails != null && thumbnails.length() > 0) {
+                thumbnailUrl = thumbnails.optJSONObject(thumbnails.length() - 1)?.optString("url")
+            }
+            if (thumbnailUrl != null && thumbnailUrl.contains("googleusercontent.com")) {
+                thumbnailUrl = thumbnailUrl.replace(Regex("=w\\d+-h\\d+.*"), "=w1080-h1080-l90-rj")
+            }
+            val finalArtwork = thumbnailUrl ?: DiscoveryManager.buildThumbnailUrl(videoId)
+
+            return mapOf(
+                "id" to videoId,
+                "title" to title,
+                "artist" to artist,
+                "artwork" to finalArtwork,
+                "artworkFallback" to DiscoveryManager.buildFallbackThumbnailUrl(videoId)
+            )
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    fun parseResponsiveListItem(item: JSONObject): Map<String, String>? {
         try {
             var videoId = item.optJSONObject("playlistItemData")?.optString("videoId")
             if (videoId.isNullOrBlank()) {
@@ -128,7 +206,7 @@ class RecommendationsManager {
                     
                     if (trimmed == "•") {
                         if (artistBuilder.isNotEmpty()) {
-                            break // We've captured the artist section, ignore album and duration
+                            break
                         }
                         continue
                     }
@@ -182,7 +260,7 @@ class RecommendationsManager {
         }
     }
 
-    private fun isTooLong(item: JSONObject): Boolean {
+    fun isTooLong(item: JSONObject): Boolean {
         val texts = mutableListOf<String>()
         
         val flexColumns = item.optJSONArray("flexColumns")
@@ -230,3 +308,5 @@ class RecommendationsManager {
         return false
     }
 }
+}
+

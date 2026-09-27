@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/utils/debouncer.dart';
@@ -39,7 +39,7 @@ class HomeController extends ChangeNotifier {
   final LibraryManager _libraryManager;
   final RecommendationEngine _recEngine;
 
-  // ─── State ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   List<Song> _songs = [];
   int _currentIndex = 0;
@@ -50,6 +50,8 @@ class HomeController extends ChangeNotifier {
   bool _initialized = false;
   bool _forceJump = false;
   bool _programmaticNav = false;
+  double _navDirection = 0.0;
+  int _programmaticNavCount = 0;
 
   bool _isLoopOne = false;
   bool _isShuffled = false;
@@ -61,7 +63,7 @@ class HomeController extends ChangeNotifier {
     duration: const Duration(milliseconds: 200),
   );
 
-  // ─── Getters ──────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Getters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   List<Song> get songs => _songs;
   int get currentIndex => _currentIndex;
@@ -75,6 +77,8 @@ class HomeController extends ChangeNotifier {
   bool get isLoadingMore => _repo.isLoading;
   bool get forceJump => _forceJump;
   bool get programmaticNav => _programmaticNav;
+  double get navDirection => _navDirection;
+  int get programmaticNavCount => _programmaticNavCount;
   bool get isLoopOne => _isLoopOne;
   bool get isShuffled => _isShuffled;
 
@@ -86,25 +90,55 @@ class HomeController extends ChangeNotifier {
     _programmaticNav = false;
   }
 
-  // ─── Init ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> init() async {
-    // Initial fetch
-    await _repo.fetchMore();
+    // 1. Try loading from fast local disk cache first
+    _repo.loadCache();
     _songs = _repo.getSongs();
-    _initialized = true;
-    notifyListeners();
-
+    
     if (_songs.isNotEmpty) {
+      // Instant cold boot!
+      _initialized = true;
+      notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
+      
       _prefetchAround(_currentIndex);
-      // Automatically load a second batch in background so fast swiping never hits a wall
-      _checkAndFetchMore();
-      // Auto-play the first song on startup to override any lingering background stream
-      play();
+      play(); // Start audio immediately from cache
+      
+      // Fetch fresh YTM feed in the background to replace the upcoming queue
+      _repo.fetchMore(isColdBootRefresh: true).then((added) {
+        if (added) {
+          _songs = _repo.getSongs();
+          notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
+          _prefetchAround(_currentIndex); // Prefetch the newly injected tracks
+        }
+      });
+    } else {
+      // Fallback if no cache exists (first launch ever)
+      await _repo.fetchMore();
+      _songs = _repo.getSongs();
+      _initialized = true;
+      notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
+
+      if (_songs.isNotEmpty) {
+        _prefetchAround(_currentIndex);
+        _checkAndFetchMore();
+        play();
+      }
     }
   }
 
-  // ─── Navigation ───────────────────────────────────────────────────────────
+  Future<void> reloadInitialFeed() async {
+    _initialized = false;
+    notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
+    await init();
+  }
+
+  // â”€â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<void> onPageChanged(int newIndex) async {
     if (newIndex == _currentIndex) return;
@@ -118,7 +152,9 @@ class HomeController extends ChangeNotifier {
     durationNotifier.value = null;
     _playbackState = PlaybackState.idle;
     _programmaticNav = false; // User swipe, don't trigger animateToPage
+    _navDirection = 0.0;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
 
     _player.pause();
 
@@ -128,7 +164,27 @@ class HomeController extends ChangeNotifier {
     // Preload neighbors
     _preloadDebouncer.call(() => _prefetchAround(newIndex));
 
-    // Always auto-play on swipe
+  // always auto-play on swipe
+    await play(isUserInitiated: true);
+  }
+
+  Future<void> jumpToIndex(int index) async {
+    if (index < 0 || index >= _songs.length || index == _currentIndex) return;
+
+    _recordInteractionForCurrent();
+    _currentIndex = index;
+    _error = null;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = null;
+    _playbackState = PlaybackState.idle;
+    _programmaticNav = true;
+    _forceJump = true;
+    notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
+
+    _player.pause();
+    _preloadDebouncer.call(() => _prefetchAround(index));
+    _checkAndFetchMore();
     await play(isUserInitiated: true);
   }
 
@@ -140,12 +196,14 @@ class HomeController extends ChangeNotifier {
           if (added) {
             _songs = _repo.getSongs();
             notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
           } else {
             // Fallback if recommendations fail
             _repo.fetchMore().then((fallbackAdded) {
               if (fallbackAdded) {
                 _songs = _repo.getSongs();
                 notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
               }
             });
           }
@@ -155,17 +213,19 @@ class HomeController extends ChangeNotifier {
           if (added) {
             _songs = _repo.getSongs();
             notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
           }
         });
       }
     }
   }
 
-  // ─── Playback commands ────────────────────────────────────────────────────
+  // â”€â”€â”€ Playback commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void toggleLoop() {
     _isLoopOne = !_isLoopOne;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   void toggleShuffle() {
@@ -177,6 +237,7 @@ class HomeController extends ChangeNotifier {
       _songs = _repo.getSongs();
     }
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   void _recordInteractionForCurrent() {
@@ -204,6 +265,9 @@ class HomeController extends ChangeNotifier {
 
     try {
       final stream = await _getStream(song);
+      
+      if (song != currentSong) return;
+
       await _player.playSong(song, stream.streamUrl);
 
       // Track history
@@ -222,6 +286,7 @@ class HomeController extends ChangeNotifier {
     _songs = _repo.getSongs();
     _forceJump = true;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
     await skipToNext();
 
     // In the background, fetch recommendations for this song to build a seamless radio
@@ -233,6 +298,7 @@ class HomeController extends ChangeNotifier {
     _repo.insertSong(_currentIndex + 1, song);
     _songs = _repo.getSongs();
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   /// Adds a song to the very end of the queue.
@@ -240,6 +306,7 @@ class HomeController extends ChangeNotifier {
     _repo.addSongLast(song);
     _songs = _repo.getSongs();
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   /// Replaces the entire queue with a new list of songs and plays the first one.
@@ -257,8 +324,10 @@ class HomeController extends ChangeNotifier {
     _forceJump = true;
     _programmaticNav = true;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
 
     _preloadDebouncer.call(() => _prefetchAround(0));
+    _checkAndFetchMore();
     await play();
   }
 
@@ -276,6 +345,7 @@ class HomeController extends ChangeNotifier {
         _repo.replaceQueueAfter(targetIndex, recommendations);
         _songs = _repo.getSongs();
         notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
       }
     } catch (e) {
       debugPrint("Failed to fetch recommendations for radio: $e");
@@ -286,6 +356,7 @@ class HomeController extends ChangeNotifier {
     _repo.reorderQueue(oldIndex, newIndex);
     _songs = _repo.getSongs();
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   void removeFromQueue(int index) {
@@ -302,6 +373,7 @@ class HomeController extends ChangeNotifier {
     }
 
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   void pause() => _player.pause();
@@ -330,6 +402,7 @@ class HomeController extends ChangeNotifier {
     _streamCache.remove(song.id);
     _error = null;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
     await play();
   }
 
@@ -343,7 +416,10 @@ class HomeController extends ChangeNotifier {
       durationNotifier.value = null;
       _playbackState = PlaybackState.idle;
       _programmaticNav = true;
+      _navDirection = 1.0;
+      _programmaticNavCount++;
       notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
 
       _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(nextIndex));
@@ -362,7 +438,10 @@ class HomeController extends ChangeNotifier {
       durationNotifier.value = null;
       _playbackState = PlaybackState.idle;
       _programmaticNav = true;
+      _navDirection = -1.0;
+      _programmaticNavCount++;
       notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
 
       _player.pause();
       _preloadDebouncer.call(() => _prefetchAround(prevIndex));
@@ -370,7 +449,7 @@ class HomeController extends ChangeNotifier {
     }
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
+  // â”€â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Future<CachedStream> _getStream(Song song) async {
     final cached = _streamCache[song.id];
@@ -484,9 +563,11 @@ class HomeController extends ChangeNotifier {
         } else {
           _error = currentError;
           notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
         }
       } else {
         notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
       }
     });
 
@@ -519,6 +600,7 @@ class HomeController extends ChangeNotifier {
   void _setPlaybackState(PlaybackState state) {
     _playbackState = state;
     notifyListeners();
+    _repo.saveUpcomingCache(_currentIndex);
   }
 
   @override
@@ -530,3 +612,10 @@ class HomeController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+
+
+
+

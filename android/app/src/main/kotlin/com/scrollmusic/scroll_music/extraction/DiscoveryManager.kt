@@ -1,24 +1,24 @@
-package com.scrollmusic.scroll_music.extraction
+﻿package com.scrollmusic.scroll_music.extraction
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import kotlin.random.Random
 
 /**
  * Handles fetching dynamic feeds of Indian music from YouTube using NewPipeExtractor.
- *
- * On each call, we pick 2 different random queries and run them in parallel,
- * then merge + deduplicate results. This ensures variety across app sessions
- * and fills the initial feed fast.
+ * Also supports authenticated YouTube Music Home Feed fetching if logged in.
  */
 class DiscoveryManager {
 
     companion object {
-        // Dynamic components for high variety initial feeds
         private val BHOJPURI_SINGERS = listOf(
             "Pawan Singh", "Khesari Lal Yadav", "Shilpi Raj", "Ritesh Pandey", 
             "Pramod Premi", "Arvind Akela Kallu", "Neelkamal Singh", "Gunjan Singh", "Raushan Rohi"
@@ -37,17 +37,13 @@ class DiscoveryManager {
             "80s superhit audio", "lofi mashup audio", "unplugged cover audio"
         )
 
-        // Max duration in seconds to avoid 1-hour jukeboxes
-        private const val MAX_DURATION_SECONDS = 7 * 60L // 7 minutes
+        private const val MAX_DURATION_SECONDS = 7 * 60L
 
-        // YouTube thumbnail quality URL templates (highest -> fallback)
         fun buildThumbnailUrl(videoId: String): String {
-            // maxresdefault is 1280x720 HD.
             return "https://i.ytimg.com/vi/$videoId/maxresdefault.jpg"
         }
 
         fun buildFallbackThumbnailUrl(videoId: String): String {
-            // hqdefault is 480x360 - always available on YouTube.
             return "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
         }
     }
@@ -64,13 +60,69 @@ class DiscoveryManager {
         return "$singer $style"
     }
 
-    /**
-     * Fetches a randomized feed of songs by running 2 different queries in parallel.
-     * Results are merged, deduplicated by video ID, and shuffled.
-     */
+    private suspend fun fetchAuthenticatedHomeFeed(): List<Map<String, String>>? = withContext(Dispatchers.IO) {
+        val cookie = android.webkit.CookieManager.getInstance().getCookie("https://music.youtube.com") ?: 
+                     android.webkit.CookieManager.getInstance().getCookie("https://youtube.com")
+        if (cookie?.contains("SAPISID") != true) return@withContext null
+
+        try {
+            val client = OkHttpClient()
+            val payload = JSONObject().apply {
+                put("context", JSONObject().apply {
+                    put("client", JSONObject().apply {
+                        put("clientName", "WEB_REMIX")
+                        put("clientVersion", "1.20230508.00.00")
+                    })
+                })
+                put("browseId", "FEmusic_home")
+            }
+
+            val request = Request.Builder()
+                .url("https://music.youtube.com/youtubei/v1/browse")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .header("Origin", "https://music.youtube.com")
+                .header("Cookie", cookie)
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext null
+            val bodyStr = response.body?.string() ?: return@withContext null
+            val json = JSONObject(bodyStr)
+            
+            val results = mutableListOf<Map<String, String>>()
+            val listRenderers = mutableListOf<JSONObject>()
+            
+            // Extract playable songs from "Quick picks", "Listen again", "Mixed for you" carousels
+            RecommendationsManager.collectRenderers(json, "musicResponsiveListItemRenderer", listRenderers)
+            
+            for (item in listRenderers) {
+                val parsed = RecommendationsManager.parseResponsiveListItem(item)
+                if (parsed != null) {
+                    results.add(parsed)
+                }
+            }
+            
+            val distinctResults = results.distinctBy { it["id"] }
+            if (distinctResults.isNotEmpty()) {
+                return@withContext distinctResults.shuffled()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
     suspend fun fetchDiscoveryFeed(): List<Map<String, String>> =
         withContext(Dispatchers.IO) {
             try {
+                // 1. Try Authenticated Home Feed first
+                val authFeed = fetchAuthenticatedHomeFeed()
+                if (authFeed != null && authFeed.isNotEmpty()) {
+                    return@withContext authFeed
+                }
+
+                // 2. Fallback to random NewPipe query engine
                 val searchManager = CustomSearchManager()
                 coroutineScope {
                     val queries = mutableSetOf<String>()
@@ -87,7 +139,7 @@ class DiscoveryManager {
 
                     val allItems = mutableListOf<Map<String, String>>()
                     for (results in resultsList) {
-                        allItems.addAll(results.take(6)) // 6 items from 4 different queries = 24 items
+                        allItems.addAll(results.take(6))
                     }
 
                     val deduplicated = mutableListOf<Map<String, String>>()
@@ -100,7 +152,6 @@ class DiscoveryManager {
 
                         val target = TrackMatcher.targetOf(item)
 
-                        // Check if this track is essentially the same recording as any already accepted track
                         var isDuplicate = false
                         for (accepted in acceptedTargets) {
                             if (TrackMatcher.score(item, accepted) != null) {
