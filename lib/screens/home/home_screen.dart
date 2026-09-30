@@ -1,14 +1,17 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:hugeicons/hugeicons.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/playback_state.dart';
 import '../../widgets/song_page.dart';
-import '../../widgets/dynamic_single_color_background.dart';
 import '../main_screen.dart';
 import 'home_controller.dart';
 
 /// Root screen. Houses the vertical PageView and wires it to [HomeController].
-/// Minimal widget â€” layout and interaction only.
+/// Minimal widget — layout and interaction only.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -18,6 +21,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final PageController _pageController;
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool? _lastOfflineState;
 
   @override
   void initState() {
@@ -34,34 +40,68 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     // Init after first frame so the loading widget can show.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<HomeController>().init();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final controller = context.read<HomeController>();
+      await controller.init();
+      
+      if (mounted && controller.isOffline) {
+        _lastOfflineState = true;
+        AppToast.show(
+          context,
+          'You are offline. Playing downloads...',
+          icon: HugeIcons.strokeRoundedWifiDisconnected01,
+        );
+      } else {
+        _lastOfflineState = false;
+      }
+      
+      _connectivitySubscription = _connectivity.onConnectivityChanged.listen((results) {
+        if (!mounted) return;
+        final isOffline = results.contains(ConnectivityResult.none);
+        if (_lastOfflineState == true && !isOffline) {
+          AppToast.show(
+            context,
+            'Back online!',
+            icon: HugeIcons.strokeRoundedWifi01,
+          );
+        } else if (_lastOfflineState == false && isOffline) {
+          AppToast.show(
+            context,
+            'You are offline. Playing downloads...',
+            icon: HugeIcons.strokeRoundedWifiDisconnected01,
+          );
+        }
+        _lastOfflineState = isOffline;
+      });
+      
       // Keep PageController in sync with controller index (e.g. auto-advance)
-      context.read<HomeController>().addListener(_syncPage);
+      controller.addListener(_syncPage);
     });
   }
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
     context.read<HomeController>().removeListener(_syncPage);
     _pageController.dispose();
     super.dispose();
   }
 
-  /// Animate the PageController to match the controller's current index.
-  /// Called whenever HomeController notifies (e.g., after skipToNext).
   void _syncPage() {
     final controller = context.read<HomeController>();
+    
     final target = controller.currentIndex;
 
     if (_pageController.hasClients) {
       final currentPage = _pageController.page?.round();
       if (currentPage != target) {
         // If we are currently offstage in the IndexedStack (e.g. user is on Search screen),
-        // tickers are disabled. animateToPage will stall and cause state desyncs.
-        // We must jump instantly instead.
+        // or a new route (like Lyrics) is pushed on top, tickers are disabled. 
+        // animateToPage will stall and cause state desyncs. We must jump instantly instead.
         final currentTab = mainScreenKey.currentState?.currentTab ?? 0;
-        if (currentTab != 0 || controller.forceJump) {
+        final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? true;
+        
+        if (currentTab != 0 || !isCurrentRoute || controller.forceJump) {
           _pageController.jumpToPage(target);
           controller.consumeForceJump();
         } else if (controller.programmaticNav) {
@@ -84,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const Positioned.fill(child: DynamicSingleColorBackground()),
           Selector<HomeController, _HomeListState>(
             selector: (context, controller) => _HomeListState(
               isInitialized: controller.isInitialized,
@@ -118,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   final song = controller.songs[index];
 
                   return SongPage(
-                    key: ValueKey(song.id),
+                    key: ValueKey('${song.id}_$index'),
                     song: song,
                     index: index,
                   );
@@ -132,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// â”€â”€â”€ Loading splash â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Loading splash Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 class _SplashLoading extends StatelessWidget {
   const _SplashLoading();
@@ -155,7 +194,7 @@ class _SplashLoading extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Empty state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -197,3 +236,4 @@ class _HomeListState {
   @override
   int get hashCode => Object.hash(isInitialized, songsLength, isLoadingMore);
 }
+

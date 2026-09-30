@@ -1,5 +1,6 @@
-import '../../models/song.dart';
-import '../../extraction/extraction_service.dart';
+import 'package:flutter/foundation.dart';
+import '../models/song.dart';
+import '../extraction/extraction_service.dart';
 import 'profile/user_profile_manager.dart';
 import 'candidate/candidate_generator.dart';
 import 'scoring/scoring_engine.dart';
@@ -60,16 +61,18 @@ class RecommendationEngine {
   }
 
   Future<List<Song>> getRecommendedFeed({
-    int limit = 10,
+    int limit = 20,
     Song? overrideSeedTrack,
     int? overrideConsecutiveAutoPlays,
   }) async {
     try {
       final activeSeed = overrideSeedTrack ?? currentSeedTrack;
+      debugPrint('RECOMMENDATION: activeSeed is ${activeSeed?.title}');
 
       if (activeSeed != null) {
         // Fetch the perfectly sequenced Radio from YouTube Music
         final ytMusicRadio = await extractionService.fetchRecommendations(activeSeed.id);
+        debugPrint('RECOMMENDATION: fetched ${ytMusicRadio.length} songs from YT Music');
         
         if (ytMusicRadio.isNotEmpty) {
           // Filter out tracks we have already played recently
@@ -77,15 +80,19 @@ class RecommendationEngine {
             return !_recentHistory.any((historySong) => historySong.id == song.id);
           }).take(limit).toList();
           
+          debugPrint('RECOMMENDATION: returning ${filtered.length} filtered songs');
           if (filtered.isNotEmpty) {
             return filtered;
           }
         }
       }
 
+      debugPrint('RECOMMENDATION: Falling back to discovery feed');
       // Cold start / Fallback to discovery feed
       return await extractionService.fetchDiscoveryFeed();
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('RECOMMENDATION ERROR: $e');
+      debugPrint('RECOMMENDATION STACKTRACE: $st');
       return await extractionService.fetchDiscoveryFeed();
     }
   }

@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/utils/artwork_helper.dart';
+import '../data/download_manager.dart';
 import '../screens/home/home_controller.dart';
 
 class DynamicGlobalBackground extends StatelessWidget {
@@ -12,6 +14,7 @@ class DynamicGlobalBackground extends StatelessWidget {
     return Consumer<HomeController>(
       builder: (context, controller, _) {
         final currentSong = controller.currentSong;
+        final dm = context.watch<DownloadManager>();
         
         return Stack(
           fit: StackFit.expand,
@@ -31,11 +34,7 @@ class DynamicGlobalBackground extends StatelessWidget {
                   decoration: BoxDecoration(
                     image: DecorationImage(
                       image: ResizeImage(
-                        CachedNetworkImageProvider(
-                          currentSong.artwork,
-                          maxWidth: 800, // Same cache key as the rest of the app
-                          errorListener: (err) => debugPrint('Background image error ignored'),
-                        ),
+                        ArtworkHelper.getProvider(currentSong.artwork, currentSong.id, dm),
                         width: 12, // Extremely tiny to force natural hardware blur on upscale
                       ),
                       fit: BoxFit.cover,

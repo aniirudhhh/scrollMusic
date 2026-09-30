@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'home/home_screen.dart';
 import 'search/search_screen.dart';
 import 'profile/profile_screen.dart';
 import '../widgets/floating_navbar.dart';
-import '../widgets/dynamic_global_background.dart';
+import '../widgets/dynamic_single_color_background.dart';
 import '../widgets/mini_player.dart';
 
 final GlobalKey<MainScreenState> mainScreenKey = GlobalKey<MainScreenState>();
@@ -42,14 +43,14 @@ class MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor:
-          Colors.transparent, // Background handled by DynamicGlobalBackground
+          Colors.transparent, // Background handled by DynamicSingleColorBackground
       resizeToAvoidBottomInset:
           false, // Prevents keyboard from pushing the floating navbar up
       extendBody: true, // Crucial for floating navbar to sit over content
       body: Stack(
         children: [
           // The dynamic liquid glass ambient background
-          const Positioned.fill(child: DynamicGlobalBackground()),
+          const Positioned.fill(child: DynamicSingleColorBackground()),
 
           // The underlying pages
           IndexedStack(index: _currentIndex, children: _pages),
@@ -86,3 +87,4 @@ class MainScreenState extends State<MainScreen> {
     );
   }
 }
+

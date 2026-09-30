@@ -18,8 +18,15 @@ void main() {
 
     test('Test 1 - Empty profile returns 0 score', () {
       final song = Song(id: '1', title: 'A', artist: 'Artist A', artwork: '', source: 'youtube');
-      final score = scoringEngine.scoreSong(song, []);
-      expect(score, 0.0);
+      final score = scoringEngine.scoreSong(
+        song: song,
+        recentHistory: [],
+        seedTrack: null,
+        seedRelatedRanks: {},
+        queuePosition: 1,
+      );
+      // Base score is ~0.066 due to normalization of 0.0 affinity between [-50, 100]
+      expect(score, closeTo(0.0666, 0.001));
     });
 
     test('Test 2 - Artist preference increases score', () {
@@ -28,19 +35,43 @@ void main() {
       final songA = Song(id: '1', title: 'A', artist: 'Artist A', artwork: '', source: 'youtube');
       final songB = Song(id: '2', title: 'B', artist: 'Artist B', artwork: '', source: 'youtube');
       
-      expect(scoringEngine.scoreSong(songA, []), greaterThan(0));
-      expect(scoringEngine.scoreSong(songB, []), equals(0.0));
+      expect(scoringEngine.scoreSong(
+        song: songA,
+        recentHistory: [],
+        seedTrack: null,
+        seedRelatedRanks: {},
+        queuePosition: 1,
+      ), greaterThan(0.067));
+      expect(scoringEngine.scoreSong(
+        song: songB,
+        recentHistory: [],
+        seedTrack: null,
+        seedRelatedRanks: {},
+        queuePosition: 1,
+      ), closeTo(0.0666, 0.001));
     });
 
     test('Test 6 - Recent repetition applies penalty', () {
       profileManager.recordArtistInteraction('Artist A', 5.0);
       final song = Song(id: '1', title: 'A', artist: 'Artist A', artwork: '', source: 'youtube');
       
-      final initialScore = scoringEngine.scoreSong(song, []);
+      final initialScore = scoringEngine.scoreSong(
+        song: song,
+        recentHistory: [],
+        seedTrack: null,
+        seedRelatedRanks: {},
+        queuePosition: 1,
+      );
       
       // Add to recent history (recent history is [latest, older, ...])
       final history = [song];
-      final penalizedScore = scoringEngine.scoreSong(song, history);
+      final penalizedScore = scoringEngine.scoreSong(
+        song: song,
+        recentHistory: history,
+        seedTrack: null,
+        seedRelatedRanks: {},
+        queuePosition: 2,
+      );
       
       expect(penalizedScore, lessThan(initialScore));
     });

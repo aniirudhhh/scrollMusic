@@ -95,7 +95,7 @@ class _SingleLineLyricsViewState extends State<SingleLineLyricsView> {
   void _updateActiveIndex() {
     if (_lyrics == null || _lyrics!.isEmpty) return;
     
-    final ms = widget.positionNotifier.value.inMilliseconds;
+    final ms = widget.positionNotifier.value.inMilliseconds + 400;
     
     int newIndex = -1;
     for (int i = 0; i < _lyrics!.length; i++) {

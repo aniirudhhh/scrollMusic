@@ -1,237 +1,238 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:hugeicons/hugeicons.dart';
+import '../../theme/search_theme.dart';
+import '../../models/search_models.dart';
+import '../../data/search_repository.dart';
+import 'search_controller.dart';
+import 'search_top_bar.dart';
+import 'search_filter_chips.dart';
+import 'top_result_card.dart';
+import 'search_result_tile.dart';
+import 'result_actions_sheet.dart';
+import 'search_skeleton.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/utils/debouncer.dart';
-import '../../extraction/extraction_service.dart';
 import '../../models/song.dart';
+import '../../models/artist.dart';
 import '../home/home_controller.dart';
-import '../main_screen.dart';
-import '../../widgets/liquid_glass_surface.dart';
+import '../artist/artist_screen.dart';
+import '../playlist/playlist_screen.dart';
+import '../../core/utils/app_toast.dart';
 import '../../widgets/song_options_sheet.dart';
+import '../../widgets/coming_soon_dialog.dart';
+import 'suggestion_tile.dart';
+import '../../data/download_manager.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final double bottomInset;
+  final SearchRepository? repository;
+  final ValueChanged<SearchItem>? onPlay;
+  final ValueChanged<SearchItem>? onAddToQueue;
+
+  const SearchScreen({
+    super.key,
+    this.bottomInset = 0.0,
+    this.repository,
+    this.onPlay,
+    this.onAddToQueue,
+  });
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class BrowseCategory {
-  final String title;
-  final String query;
-  final List<Color> gradient;
-  
-  const BrowseCategory(this.title, this.query, this.gradient);
-}
-
 class _SearchScreenState extends State<SearchScreen> {
-  final _searchController = TextEditingController();
-  final _debouncer = Debouncer(duration: const Duration(milliseconds: 500));
-  
-  List<Song> _results = [];
-  bool _isLoading = false;
-  String _error = '';
-  
-  List<String> _recentSearches = [];
-  static const String _prefsKey = 'recent_searches';
-  
-  final List<BrowseCategory> _browseCategories = [
-    BrowseCategory('Bollywood Hits', 'Latest Bollywood Hits', const [Color(0xFF8E2DE2), Color(0xFF4A00E0)]),
-    BrowseCategory('Viral 50', 'Viral 50 Global', const [Color(0xFFFF416C), Color(0xFFFF4B2B)]),
-    BrowseCategory('Lofi Beats', 'Lofi Chill Beats', const [Color(0xFF141E30), Color(0xFF243B55)]),
-    BrowseCategory('Punjabi Top', 'Trending Punjabi', const [Color(0xFFDA4453), Color(0xFF89216B)]),
-    BrowseCategory('Pop Anthems', 'Top Pop Hits', const [Color(0xFF00B4DB), Color(0xFF0083B0)]),
-    BrowseCategory('Devotional', 'Best Devotional Songs', const [Color(0xFFF5515F), Color(0xFFA1051D)]),
-    BrowseCategory('Workout', 'Workout Motivation Music', const [Color(0xFF0F2027), Color(0xFF203A43)]),
-    BrowseCategory('Chill Vibes', 'Chill Acoustic Vibe', const [Color(0xFF1D976C), Color(0xFF2F80ED)]),
-  ];
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+
+  late SearchScreenController _controller;
 
   @override
   void initState() {
     super.initState();
-    _loadRecentSearches();
+    _controller = SearchScreenController(
+      repository: widget.repository ?? YoutubeSearchRepository(),
+      downloadManager: context.read<DownloadManager>(),
+    );
+    _controller.addListener(_onControllerUpdate);
+
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 300) {
+        _controller.loadNextPage();
+      }
+    });
   }
 
-  Future<void> _loadRecentSearches() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _recentSearches = prefs.getStringList(_prefsKey) ?? [];
-    });
-  }
-  
-  Future<void> _addRecentSearch(String query) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) return;
-    
-    _recentSearches.remove(trimmed);
-    _recentSearches.insert(0, trimmed);
-    
-    if (_recentSearches.length > 10) {
-      _recentSearches = _recentSearches.sublist(0, 10);
-    }
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_prefsKey, _recentSearches);
-    
+  void _onControllerUpdate() {
     if (mounted) setState(() {});
   }
-  
-  Future<void> _clearRecentSearches() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
-    setState(() {
-      _recentSearches.clear();
-    });
+
+  void _handleItemTap(SearchItem item) {
+    if (item is ArtistItem) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ArtistScreen(
+            artist: Artist(
+              id: item.id,
+              name: item.title,
+              imageUrl: item.thumbnailUrl,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (item is PlaylistItem) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PlaylistScreen(
+            playlistId: item.id,
+            title: item.title,
+            imageUrl: item.thumbnailUrl,
+            owner: item.owner,
+          ),
+        ),
+      );
+      return;
+    }
+    if (item is AlbumItem) {
+      showComingSoonDialog(context);
+      return;
+    }
+
+    // Treat as playable Song/Video/Episode
+    final song = Song(
+      id: item.id,
+      title: item.title,
+      artist: (item is SongItem)
+          ? item.artist
+          : ((item is VideoItem) ? item.channel : item.subtitle),
+      artwork: item.thumbnailUrl,
+      source: 'youtube',
+    );
+    context.read<HomeController>().playSongNext(song);
   }
-  
-  void _onChipTapped(String query) {
-    _searchController.text = query;
-    _onSearchChanged(query);
+
+  void _showItemOptions(SearchItem item) {
+    String artistName = item.title;
+    if (item is SongItem) artistName = item.artist;
+    if (item is VideoItem) artistName = item.channel;
+    if (item is AlbumItem) artistName = item.artist;
+
+    final song = Song(
+      id: item.id,
+      title: item.title,
+      artist: artistName,
+      artwork: item.thumbnailUrl,
+      source: 'youtube',
+    );
+    SongOptionsBottomSheet.show(context, song);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _debouncer.dispose();
+    _focusNode.dispose();
+    _scrollController.dispose();
+    _controller.removeListener(_onControllerUpdate);
+    _controller.dispose();
     super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _results = [];
-        _error = '';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = '';
-    });
-
-    _debouncer.call(() => _performSearch(query.trim()));
-  }
-
-  Future<void> _performSearch(String query) async {
-    try {
-      final extractor = context.read<ExtractionService>();
-      final results = await extractor.search(query);
-      
-      if (mounted) {
-        setState(() {
-          _results = results;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to search: $e';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _playSong(Song song) {
-    if (_searchController.text.trim().isNotEmpty) {
-      _addRecentSearch(_searchController.text.trim());
-    }
-    
-    // Hide keyboard to prevent it from squashing the full screen player (SongPage)
-    FocusScope.of(context).unfocus();
-    
-    // Add to the front of the queue and play
-    context.read<HomeController>().playSongNext(song);
-    
-    // Switch to Home tab
-    mainScreenKey.currentState?.switchToTab(0);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: SearchTheme.backgroundColor,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ─── Header ──────────────────────────────────────────────────────
-            const Padding(
-              padding: EdgeInsets.only(left: 20.0, top: 16.0, bottom: 12.0),
-              child: Text(
-                'Search',
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ),
-
-            // ─── Modern Search Bar ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: LiquidGlassSurface(
-                blurBehind: false,
-                tintColor: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                shadowElevation: 0, // Flat look like Apple Music
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  onSubmitted: (query) {
-                    if (query.trim().isNotEmpty) {
-                      _addRecentSearch(query);
-                    }
-                  },
-                  textAlignVertical: TextAlignVertical.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText: 'Songs, Artists, Albums...',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 16,
+        bottom: false,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            const SliverToBoxAdapter(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+                  child: Text(
+                    'Search',
+                    style: TextStyle(
+                      fontSize: 34.0,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
                     ),
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.only(left: 16, right: 12),
-                      child: HugeIcon(
-                        icon: HugeIcons.strokeRoundedSearch01,
-                        color: Colors.white.withValues(alpha: 0.5),
-                        size: 20.0,
-                        strokeWidth: 2.0,
-                      ),
-                    ),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: HugeIcon(
-                              icon: HugeIcons.strokeRoundedCancel01,
-                              color: Colors.white.withValues(alpha: 0.6),
-                              size: 20.0,
-                              strokeWidth: 2.0,
-                            ),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
             ),
-
-            // ─── Results Area ────────────────────────────────────────────────
-            Expanded(
-              child: _buildBody(),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _StickySearchBarDelegate(
+                hasChips: (!_controller.isEditing && _searchController.text.isNotEmpty),
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                    child: Container(
+                      color: Colors.transparent, // slight tint for glass effect
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SearchTopBar(
+                            controller: _searchController,
+                            focusNode: _focusNode,
+                            isEditing: _controller.isEditing,
+                            onClear: () {
+                              _searchController.clear();
+                              _controller.currentQuery = '';
+                              _controller.onQueryChanged('');
+                              _focusNode.requestFocus();
+                            },
+                            onTapSearchField: () {
+                              _controller.setEditing(true);
+                              _focusNode.requestFocus();
+                            },
+                            onSubmitted: (q) {
+                              _focusNode.unfocus();
+                              _searchController.text = q;
+                              _controller.submitSearch(q);
+                            },
+                            onChanged: (q) {
+                              _controller.currentQuery = q;
+                              _controller.onQueryChanged(q);
+                            },
+                            hintText: _controller.isOffline
+                                ? 'Search your downloads...'
+                                : 'Search songs, artists...',
+                          ),
+                          if (!_controller.isEditing && _searchController.text.isNotEmpty)
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(height: 8.0),
+                                SearchFilterChips(
+                                  selectedFilter: _controller.selectedFilter,
+                                  onFilterSelected: (filter) {
+                                    _controller.setFilter(filter);
+                                  },
+                                ),
+                                const SizedBox(height: 16.0),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            ..._buildBodySlivers(),
+            SliverToBoxAdapter(
+              child: SizedBox(height: widget.bottomInset),
             ),
           ],
         ),
@@ -239,204 +240,210 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildBody() {
-    if (_searchController.text.trim().isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 90),
-        children: [
-          if (_recentSearches.isNotEmpty) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recent Searches',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                TextButton(
-                  onPressed: _clearRecentSearches,
-                  child: Text(
-                    'Clear',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: _recentSearches.map((query) {
-                return Material(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(24),
-                  child: InkWell(
-                    onTap: () => _onChipTapped(query),
-                    borderRadius: BorderRadius.circular(24),
-                    splashColor: Colors.white.withValues(alpha: 0.1),
-                    highlightColor: Colors.white.withValues(alpha: 0.05),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const HugeIcon(
-                            icon: HugeIcons.strokeRoundedClock01,
-                            color: Colors.white70,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            query,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 32),
-          ],
-          
-          // Removed Browse Categories
-        ],
-      );
-    }
+  List<Widget> _buildBodySlivers() {
+    if (_controller.isEditing) {
+      return [
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final suggestion = _controller.suggestions[index];
+              final isHistoryItem =
+                  _searchController.text.isEmpty &&
+                  index < _controller.history.length;
 
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white54),
-      );
-    }
-
-    if (_error.isNotEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            _error,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.redAccent),
+              return SuggestionTile(
+                text: suggestion,
+                isHistory: isHistoryItem,
+                onTap: () {
+                  _searchController.text = suggestion;
+                  _focusNode.unfocus();
+                  _controller.submitSearch(suggestion);
+                },
+                onFill: () {
+                  _searchController.text = suggestion;
+                  _searchController.selection = TextSelection.collapsed(
+                    offset: suggestion.length,
+                  );
+                  _controller.currentQuery = suggestion;
+                  _controller.onQueryChanged(suggestion);
+                  _focusNode.requestFocus();
+                },
+              );
+            },
+            childCount: _controller.suggestions.length,
           ),
         ),
-      );
+      ];
     }
 
-    if (_results.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 64,
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No results found',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.4),
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    switch (_controller.state) {
+      case SearchScreenState.loading:
+        return [const SliverToBoxAdapter(child: SearchSkeleton())];
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 90),
-      itemCount: _results.length,
-      itemBuilder: (context, index) {
-        final song = _results[index];
-        return Column(
-          children: [
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _playSong(song),
-                onLongPress: () => SongOptionsBottomSheet.show(context, song),
-                splashColor: Colors.white.withValues(alpha: 0.1),
-                highlightColor: Colors.white.withValues(alpha: 0.05),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Row(
-                    children: [
-                      // Square Artwork
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6), // Subtle Apple-style border radius
-                        child: CachedNetworkImage(
-                          imageUrl: song.artwork,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(
-                            width: 50,
-                            height: 50,
-                            color: Colors.white.withValues(alpha: 0.1),
-                            child: const Icon(Icons.music_note, color: Colors.white54),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              song.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400, // Apple uses regular weight for titles
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Song • ${song.artist}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.6),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Removed 3-dot menu, replaced with long press on InkWell
-                    ],
+      case SearchScreenState.empty:
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.search_off,
+                    color: SearchTheme.secondaryText,
+                    size: 64,
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No results for '${_controller.currentQuery}'",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Try checking the spelling or use different keywords",
+                    style: TextStyle(
+                      color: SearchTheme.secondaryText,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             ),
-            // Subtle Divider, inset to align with text
-            Padding(
-              padding: const EdgeInsets.only(left: 64.0),
-              child: Divider(
-                height: 1,
-                thickness: 0.5,
-                color: Colors.white.withValues(alpha: 0.1),
+          ),
+        ];
+
+      case SearchScreenState.error:
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Something went wrong",
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () =>
+                        _controller.submitSearch(_controller.currentQuery),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                    ),
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
             ),
-          ],
-        );
-      },
-    );
+          ),
+        ];
+
+      case SearchScreenState.results:
+        final page = _controller.currentPage;
+        if (page == null) return [const SliverToBoxAdapter(child: SizedBox.shrink())];
+
+        return [
+          SliverPadding(
+            padding: const EdgeInsets.only(top: 16.0, bottom: 80.0),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  int itemIndex = index;
+
+                  if (page.topResult != null) {
+                    if (index == 0) {
+                      final top = page.topResult!;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 32.0),
+                        child: TopResultCard(
+                          imageUrl: top.thumbnailUrl,
+                          title: top.title,
+                          subtitle: top.subtitle,
+                          onPlay: () => _handleItemTap(top),
+                          onSave: () => _showItemOptions(top),
+                          onCardTapped: () => _handleItemTap(top),
+                          onMoreTapped: () => _showItemOptions(top),
+                        ),
+                      );
+                    }
+                    itemIndex--;
+                  }
+
+                  if (itemIndex == page.items.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          strokeWidth: 2.0,
+                        ),
+                      ),
+                    );
+                  }
+
+                  final item = page.items[itemIndex];
+                  SearchResultType type = SearchResultType.song;
+                  if (item is VideoItem) type = SearchResultType.video;
+                  if (item is ArtistItem) type = SearchResultType.artist;
+                  if (item is AlbumItem) type = SearchResultType.album;
+                  if (item is PlaylistItem) type = SearchResultType.playlist;
+                  if (item is EpisodeItem) type = SearchResultType.episode;
+
+                  return SearchResultTile(
+                    imageUrl: item.thumbnailUrl,
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    type: type,
+                    onTap: () => _handleItemTap(item),
+                    onMoreTapped: () => _showItemOptions(item),
+                  );
+                },
+                childCount:
+                    page.items.length +
+                    (page.topResult != null ? 1 : 0) +
+                    (_controller.isPaginating ? 1 : 0),
+              ),
+            ),
+          ),
+        ];
+
+      default:
+        return [const SliverToBoxAdapter(child: SizedBox.shrink())];
+    }
+  }
+}
+
+class _StickySearchBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final bool hasChips;
+
+  _StickySearchBarDelegate({required this.child, required this.hasChips});
+
+  @override
+  double get minExtent => 56.0 + (hasChips ? (8.0 + 36.0 + 16.0) : 0.0);
+
+  @override
+  double get maxExtent => 56.0 + (hasChips ? (8.0 + 36.0 + 16.0) : 0.0);
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _StickySearchBarDelegate oldDelegate) {
+    return oldDelegate.hasChips != hasChips || oldDelegate.child != child;
   }
 }

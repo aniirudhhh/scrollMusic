@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../data/yt_music_sync_service.dart';
 
 class YTAuthScreen extends StatefulWidget {
   const YTAuthScreen({super.key});
@@ -23,9 +24,11 @@ class _YTAuthScreenState extends State<YTAuthScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
             _checkCookies(url);
           },
           onUrlChange: (UrlChange change) {
@@ -38,8 +41,10 @@ class _YTAuthScreenState extends State<YTAuthScreen> {
       ..loadRequest(Uri.parse('https://accounts.google.com/ServiceLogin?continue=https://music.youtube.com/'));
   }
 
+  bool _isPopping = false;
+
   Future<void> _checkCookies(String url) async {
-    if (!url.contains('music.youtube.com')) return;
+    if (!url.contains('music.youtube.com') || _isPopping) return;
 
     try {
       final String? cookieString = await _cookieChannel.invokeMethod('getCookies', {
@@ -49,10 +54,10 @@ class _YTAuthScreenState extends State<YTAuthScreen> {
       if (cookieString != null && 
          (cookieString.contains('SAPISID') || cookieString.contains('__Secure-3PSID'))) {
         
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('yt_auth_cookie', cookieString);
+        await YTMusicSyncService.setAuthCookie(cookieString);
         
-        if (mounted) {
+        if (mounted && !_isPopping) {
+          _isPopping = true;
           Navigator.of(context).pop(true);
         }
       }

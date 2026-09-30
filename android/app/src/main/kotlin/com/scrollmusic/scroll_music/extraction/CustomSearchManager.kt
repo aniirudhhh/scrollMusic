@@ -8,25 +8,28 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-/**
- * A custom search manager that queries YouTube Music's internal API directly,
- * bypassing external extractors like NewPipeExtractor for faster and more controlled
- * search results.
- */
 class CustomSearchManager {
     private val client = OkHttpClient()
 
-    suspend fun search(query: String): List<Map<String, String>> = withContext(Dispatchers.IO) {
-        // Construct the undocumented YouTube Music inner-tube API payload
+    suspend fun search(query: String, filter: String? = null): List<Map<String, String>> = withContext(Dispatchers.IO) {
         val payload = JSONObject().apply {
             put("context", JSONObject().apply {
                 put("client", JSONObject().apply {
                     put("clientName", "WEB_REMIX")
-                    put("clientVersion", "1.20230508.00.00") // Required to get valid responses
+                    put("clientVersion", "1.20230508.00.00")
                 })
             })
             put("query", query)
-            put("params", "EgWKAQIIAWoKEAkQChAFEAMQBA==") // Filter for SONGS
+            
+            // Map the string filter to YTM inner-tube param
+            val params = when (filter) {
+                "videos" -> "EgWKAQIQAWoKEAkQChAFEAMQBA=="
+                "artists" -> "EgWKAQIgAWoKEAkQChAFEAMQBA=="
+                "albums" -> "EgWKAQIYAWoKEAkQChAFEAMQBA=="
+                "featuredPlaylists", "communityPlaylists", "playlists" -> "EgWKAQIoAWoKEAkQChAFEAMQBA=="
+                else -> "EgWKAQIIAWoKEAkQChAFEAMQBA==" // songs default
+            }
+            put("params", params)
         }
 
         val request = Request.Builder()
@@ -41,7 +44,7 @@ class CustomSearchManager {
             throw ExtractionException("Search failed with code ${response.code}")
         }
 
-        val bodyStr = response.body?.string() ?: throw ExtractionException("Empty response body")
+        val bodyStr = response.body?.bytes()?.toString(Charsets.UTF_8) ?: throw ExtractionException("Empty response body")
         val json = JSONObject(bodyStr)
         
         val results = mutableListOf<Map<String, String>>()
@@ -51,17 +54,13 @@ class CustomSearchManager {
             collectRenderers(json, "musicResponsiveListItemRenderer", renderers)
 
             for (item in renderers) {
-                val parsed = parseResponsiveListItem(item)
+                val parsed = parseResponsiveListItem(item, filter)
                 if (parsed != null) {
                     results.add(parsed)
                 }
             }
         } catch (e: Exception) {
             throw Exception("Parse error: ${e.message}", e)
-        }
-        
-        if (results.isEmpty()) {
-            throw Exception("No results found. Body sample: " + bodyStr.take(500))
         }
         
         results
@@ -84,9 +83,12 @@ class CustomSearchManager {
         }
     }
     
-    private fun parseResponsiveListItem(item: JSONObject): Map<String, String>? {
+    private fun parseResponsiveListItem(item: JSONObject, requestedFilter: String?): Map<String, String>? {
         try {
-            // videoId dictates whether this is a playable song
+            var extractedId = ""
+            var itemType = requestedFilter ?: "songs"
+
+            // 1. Try to find a videoId (Songs, Videos, Episodes)
             var videoId = item.optJSONObject("playlistItemData")?.optString("videoId")
             if (videoId.isNullOrBlank()) {
                 videoId = item.optJSONObject("overlay")
@@ -98,9 +100,8 @@ class CustomSearchManager {
                     ?.optString("videoId")
             }
             if (videoId.isNullOrBlank()) {
-                // sometimes the structure is slightly different for songs in search results
-                val firstColumn = item.optJSONArray("flexColumns")?.optJSONObject(0)
-                videoId = firstColumn?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+                videoId = item.optJSONArray("flexColumns")?.optJSONObject(0)
+                    ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
                     ?.optJSONObject("text")
                     ?.optJSONArray("runs")
                     ?.optJSONObject(0)
@@ -108,165 +109,130 @@ class CustomSearchManager {
                     ?.optJSONObject("watchEndpoint")
                     ?.optString("videoId")
             }
-            if (videoId.isNullOrBlank()) return null
-            
-            if (isTooLong(item)) return null
+
+            // 2. If no videoId, try to find a browseId (Artists, Albums, Playlists)
+            var browseId = ""
+            if (videoId.isNullOrBlank()) {
+                browseId = item.optJSONObject("navigationEndpoint")
+                    ?.optJSONObject("browseEndpoint")
+                    ?.optString("browseId") ?: ""
+                
+                if (browseId.isBlank()) {
+                    browseId = item.optJSONArray("flexColumns")?.optJSONObject(0)
+                        ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+                        ?.optJSONObject("text")
+                        ?.optJSONArray("runs")
+                        ?.optJSONObject(0)
+                        ?.optJSONObject("navigationEndpoint")
+                        ?.optJSONObject("browseEndpoint")
+                        ?.optString("browseId") ?: ""
+                }
+            }
+
+            if (!videoId.isNullOrBlank()) {
+                extractedId = videoId
+                if (itemType !in listOf("songs", "videos", "episodes")) {
+                    itemType = "songs"
+                }
+            } else if (browseId.isNotBlank()) {
+                extractedId = browseId
+                if (browseId.startsWith("UC") || browseId.startsWith("FEmusic_library_privately_owned_artist")) {
+                    itemType = "artists"
+                } else if (browseId.startsWith("MPREb_")) {
+                    itemType = "albums"
+                } else if (browseId.startsWith("VL") || browseId.startsWith("PL")) {
+                    itemType = "playlists"
+                }
+            } else {
+                return null // Unplayable/Unviewable item
+            }
             
             val flexColumns = item.optJSONArray("flexColumns") ?: return null
-            if (flexColumns.length() < 2) return null
+            if (flexColumns.length() < 2 && itemType != "artists") return null
             
-            // Extract title from the first column
+            // Extract title
             val titleTextRuns = flexColumns.optJSONObject(0)
                 ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
                 ?.optJSONObject("text")
                 ?.optJSONArray("runs")
-            val title = titleTextRuns?.optJSONObject(0)?.optString("text") ?: "Unknown Title"
+            val title = titleTextRuns?.optJSONObject(0)?.optString("text") ?: "Unknown"
             
-            // Extract artist/album from the second column
-            val artistTextRuns = flexColumns.optJSONObject(1)
+            // Extract subtitle details
+            val subtitleRuns = flexColumns.optJSONObject(1)
                 ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
                 ?.optJSONObject("text")
                 ?.optJSONArray("runs")
                 
-            val artistBuilder = StringBuilder()
-            if (artistTextRuns != null) {
-                for (i in 0 until artistTextRuns.length()) {
-                    val text = artistTextRuns.optJSONObject(i)?.optString("text") ?: ""
-                    
-                    // Skip the separator for the final artist string
-                    val trimmed = text.trim()
-                    if (trimmed.equals("Song", ignoreCase = true) || trimmed.equals("Video", ignoreCase = true)) {
-                        continue
-                    }
-                    
-                    if (trimmed == "•") {
-                        if (artistBuilder.isNotEmpty()) {
-                            break // We've captured the artist section, ignore album and duration
-                        }
-                        continue
-                    }
-                    
-                    artistBuilder.append(text)
+            val subtitleBuilder = java.lang.StringBuilder()
+            if (subtitleRuns != null) {
+                for (i in 0 until subtitleRuns.length()) {
+                    subtitleBuilder.append(subtitleRuns.optJSONObject(i)?.optString("text") ?: "")
                 }
             }
-            val artist = artistBuilder.toString().trim().ifBlank { "Unknown Artist" }
+            val subtitleRaw = subtitleBuilder.toString().trim()
             
-            // Extract original high-res square thumbnail if available
+            // Clean up subtitle to just artist/owner name roughly for now
+            val parts = subtitleRaw.split(Regex(" [\\u2022] "))
+            val displaySubtitle = if (parts.size > 1 && (parts[0].equals("Song", true) || parts[0].equals("Video", true))) {
+                parts[1]
+            } else if (parts.isNotEmpty()) {
+                parts[0]
+            } else {
+                "Unknown"
+            }
+            
+            // Extract thumbnail
             var thumbnailUrl: String? = null
-            val thumbnails = item.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                ?.optJSONObject("thumbnail")
+            val outerThumbnails = item.optJSONObject("thumbnail")
                 ?.optJSONObject("musicThumbnailRenderer")
                 ?.optJSONObject("thumbnail")
                 ?.optJSONArray("thumbnails")
             
-            if (thumbnails == null) {
-                // Try alternate structure for thumbnails
+            if (outerThumbnails != null && outerThumbnails.length() > 0) {
+                thumbnailUrl = outerThumbnails.optJSONObject(outerThumbnails.length() - 1)?.optString("url")
+            }
+            
+            if (thumbnailUrl == null) {
                 val fallbackThumbnails = item.optJSONArray("thumbnails")
                     ?.optJSONObject(0)
                     ?.optJSONArray("thumbnails")
                 if (fallbackThumbnails != null && fallbackThumbnails.length() > 0) {
                     thumbnailUrl = fallbackThumbnails.optJSONObject(fallbackThumbnails.length() - 1)?.optString("url")
+                }
+            }
+
+            // Replace resize artifacts in YT urls if present
+            if (thumbnailUrl != null) {
+                if (thumbnailUrl.contains("ytimg.com")) {
+                    // Video thumbnails from ytimg are often mqdefault (320x180) which is very blurry.
+                    // Strip the query params (which add crops) and upgrade to hqdefault (480x360) which always exists.
+                    thumbnailUrl = thumbnailUrl.substringBefore("?")
+                        .replace("mqdefault.jpg", "hqdefault.jpg")
+                        .replace("sddefault.jpg", "hqdefault.jpg")
+                        .replace("default.jpg", "hqdefault.jpg")
                 } else {
-                    // One more structure: outer thumbnail
-                    val outerThumbnails = item.optJSONObject("thumbnail")
-                        ?.optJSONObject("musicThumbnailRenderer")
-                        ?.optJSONObject("thumbnail")
-                        ?.optJSONArray("thumbnails")
-                    if (outerThumbnails != null && outerThumbnails.length() > 0) {
-                        thumbnailUrl = outerThumbnails.optJSONObject(outerThumbnails.length() - 1)?.optString("url")
-                    }
-                }
-            } else if (thumbnails.length() > 0) {
-                // Get the highest resolution thumbnail (usually the last one in the array)
-                thumbnailUrl = thumbnails.optJSONObject(thumbnails.length() - 1)?.optString("url")
-            }
-
-            // If it's a googleusercontent URL, request a 1080x1080 crisp version
-            if (thumbnailUrl != null && thumbnailUrl.contains("googleusercontent.com")) {
-                // Usually looks like ...=w120-h120-l90-rj or ...=w60-h60-c
-                thumbnailUrl = thumbnailUrl.replace(Regex("=w\\d+-h\\d+.*"), "=w1080-h1080-l90-rj")
-            }
-
-            // Extract duration from fixed/flex columns
-            var durationText = ""
-            val fixedColumns = item.optJSONArray("fixedColumns")
-            if (fixedColumns != null) {
-                for (i in 0 until fixedColumns.length()) {
-                    val runs = fixedColumns.optJSONObject(i)
-                        ?.optJSONObject("musicResponsiveListItemFixedColumnRenderer")
-                        ?.optJSONObject("text")
-                        ?.optJSONArray("runs")
-                    if (runs != null) {
-                        for (j in 0 until runs.length()) {
-                            val text = runs.optJSONObject(j)?.optString("text") ?: ""
-                            if (text.contains(":")) {
-                                durationText = text
-                            }
-                        }
-                    }
+                    // For lh3.googleusercontent.com, request a crisp 1080x1080 square
+                    thumbnailUrl = thumbnailUrl.replace(Regex("=w\\d+-h\\d+.*"), "=w1080-h1080-l90-rj")
                 }
             }
-
-            val finalArtwork = thumbnailUrl ?: DiscoveryManager.buildThumbnailUrl(videoId)
 
             return mapOf(
-                "id" to videoId,
+                "id" to extractedId,
                 "title" to title,
-                "artist" to artist,
-                "artwork" to finalArtwork,
-                "artworkFallback" to DiscoveryManager.buildFallbackThumbnailUrl(videoId),
-                "durationText" to durationText
+                "artist" to displaySubtitle, // used as generic subtitle
+                "artwork" to (thumbnailUrl ?: ""),
+                "type" to itemType
             )
         } catch (e: Exception) {
             return null
         }
     }
-
+    
+    // Ignore duration logic here for brevity, we handle filtering by type
     private fun isTooLong(item: JSONObject): Boolean {
-        val texts = mutableListOf<String>()
-        
-        val flexColumns = item.optJSONArray("flexColumns")
-        if (flexColumns != null) {
-            for (i in 0 until flexColumns.length()) {
-                val runs = flexColumns.optJSONObject(i)
-                    ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                    ?.optJSONObject("text")
-                    ?.optJSONArray("runs")
-                if (runs != null) {
-                    for (j in 0 until runs.length()) {
-                        texts.add(runs.optJSONObject(j)?.optString("text") ?: "")
-                    }
-                }
-            }
-        }
-        
-        val fixedColumns = item.optJSONArray("fixedColumns")
-        if (fixedColumns != null) {
-            for (i in 0 until fixedColumns.length()) {
-                val runs = fixedColumns.optJSONObject(i)
-                    ?.optJSONObject("musicResponsiveListItemFixedColumnRenderer")
-                    ?.optJSONObject("text")
-                    ?.optJSONArray("runs")
-                if (runs != null) {
-                    for (j in 0 until runs.length()) {
-                        texts.add(runs.optJSONObject(j)?.optString("text") ?: "")
-                    }
-                }
-            }
-        }
-        
-        for (text in texts) {
-            if (Regex("\\b\\d+:\\d{2}:\\d{2}\\b").containsMatchIn(text)) return true
-            
-            val mmssMatch = Regex("\\b(\\d{2,}):(\\d{2})\\b").find(text)
-            if (mmssMatch != null) {
-                val minutes = mmssMatch.groupValues[1].toIntOrNull() ?: 0
-                if (minutes >= 15) return true
-            }
-            
-            if (text.contains("Podcast", ignoreCase = true) || text.contains("Episode", ignoreCase = true)) return true
-        }
-        
-        return false
+        return false 
     }
 }
+
+
+

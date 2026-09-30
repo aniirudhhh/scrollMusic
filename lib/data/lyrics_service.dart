@@ -1,17 +1,26 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/lyric_line.dart';
 
 class LyricsService {
   static const String _baseUrl = 'https://lrclib.net/api';
-  static const String _agent = 'ScrollMusic (https://github.com/scrollmusic)';
+  static const String _agent = 'Loopr (https://github.com/aniirudhhh/Loopr)';
   static final Map<String, List<LyricLine>?> _cache = {};
+  static const int _maxCacheSize = 50;
+
+  void _addToCache(String key, List<LyricLine>? value) {
+    _cache[key] = value;
+    if (_cache.length > _maxCacheSize) {
+      _cache.remove(_cache.keys.first);
+    }
+  }
 
   /// Clean noisy YouTube titles (e.g. "(Official Video)", "Lyrical:")
   String _cleanTitle(String title) {
     String cleaned = title.replaceAll(RegExp(r'\|.*$'), ''); // Remove everything after |
     cleaned = cleaned.replaceAll(RegExp(r'\((?:from|feat\.?|official|lyrical|video|audio|remix)[^)]*\)', caseSensitive: false), ' ');
-    cleaned = cleaned.replaceAll(RegExp(r'\[[^]]*]'), ' '); // Remove []
+    cleaned = cleaned.replaceAll(RegExp(r'\[.*?\]'), ' '); // Remove []
     cleaned = cleaned.replaceAll(RegExp(r'\b(?:official (?:video|audio|music video)|lyrical|full song|4k video)\b', caseSensitive: false), ' ');
     return cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
@@ -22,9 +31,14 @@ class LyricsService {
     final cacheKey = '$cleanTitle|$cleanArtist|$durationSeconds';
     
     if (_cache.containsKey(cacheKey)) {
-      return _cache[cacheKey];
+      // Move to end to mark as recently used
+      final cached = _cache.remove(cacheKey);
+      _cache[cacheKey] = cached;
+      return cached;
     }
 
+    Exception? lastError;
+    
     // 1. Try exact match
     try {
       final uri = Uri.parse('$_baseUrl/get').replace(queryParameters: {
@@ -33,18 +47,19 @@ class LyricsService {
         'duration': durationSeconds.toString(),
       });
 
-      final response = await http.get(uri, headers: {'User-Agent': _agent});
+      final response = await http.get(uri, headers: {'User-Agent': _agent}).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final syncedLyrics = data['syncedLyrics'] as String?;
         if (syncedLyrics != null && syncedLyrics.isNotEmpty) {
           final result = _parseLrc(syncedLyrics);
-          _cache[cacheKey] = result;
+          _addToCache(cacheKey, result);
           return result;
         }
       }
     } catch (e) {
-      // Ignore
+      debugPrint('Error fetching exact lyrics: $e');
+      lastError = e is Exception ? e : Exception(e.toString());
     }
 
     // 2. Try fuzzy search fallback
@@ -54,7 +69,8 @@ class LyricsService {
         'artist_name': cleanArtist,
       });
 
-      final response = await http.get(searchUri, headers: {'User-Agent': _agent});
+      final response = await http.get(searchUri, headers: {'User-Agent': _agent}).timeout(const Duration(seconds: 10));
+      lastError = null;
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         
@@ -76,15 +92,20 @@ class LyricsService {
 
         if (bestHit != null) {
           final result = _parseLrc(bestHit['syncedLyrics']);
-          _cache[cacheKey] = result;
+          _addToCache(cacheKey, result);
           return result;
         }
       }
     } catch (e) {
-      // Ignore
+      debugPrint('Error fetching fuzzy lyrics: $e');
+      lastError = e is Exception ? e : Exception(e.toString());
     }
 
-    _cache[cacheKey] = null;
+    if (lastError != null) {
+      throw lastError;
+    }
+
+    _addToCache(cacheKey, null);
     return null;
   }
 

@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,8 @@ import '../models/artist.dart';
 import '../screens/home/home_controller.dart';
 import '../screens/artist/artist_screen.dart';
 import '../data/library_manager.dart';
+import '../data/download_manager.dart';
+import '../extraction/extraction_service.dart';
 import '../core/utils/app_toast.dart';
 import '../core/utils/sleep_timer.dart';
 import 'package:share_plus/share_plus.dart';
@@ -84,7 +86,7 @@ class SongOptionsBottomSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           // Options List Glass
           LiquidGlassSurface(
             blurBehind: true,
@@ -93,14 +95,20 @@ class SongOptionsBottomSheet extends StatelessWidget {
             tintColor: const Color(0xFF1E1E1E).withValues(alpha: 0.6),
             child: Column(
               children: [
-                if (context.read<HomeController>().currentSong?.id != song.id) ...[
+                if (context.read<HomeController>().currentSong?.id !=
+                    song.id) ...[
                   _OptionTile(
                     icon: HugeIcons.strokeRoundedPlaylist01,
                     title: 'Play Next',
                     onTap: () {
+                      final homeController = context.read<HomeController>();
+                      AppToast.show(
+                        context,
+                        'Added to queue',
+                        icon: HugeIcons.strokeRoundedPlaylist01,
+                      );
                       Navigator.pop(context);
-                      context.read<HomeController>().addToQueueNext(song);
-                      AppToast.show(context, 'Added to queue', icon: HugeIcons.strokeRoundedPlaylist01);
+                      homeController.addToQueueNext(song);
                     },
                   ),
                   _buildDivider(),
@@ -108,24 +116,39 @@ class SongOptionsBottomSheet extends StatelessWidget {
                     icon: HugeIcons.strokeRoundedPlaylist02,
                     title: 'Add to Queue',
                     onTap: () {
+                      final homeController = context.read<HomeController>();
+                      AppToast.show(
+                        context,
+                        'Added to end of queue',
+                        icon: HugeIcons.strokeRoundedPlaylist02,
+                      );
                       Navigator.pop(context);
-                      context.read<HomeController>().addToQueueLast(song);
-                      AppToast.show(context, 'Added to end of queue', icon: HugeIcons.strokeRoundedPlaylist02);
+                      homeController.addToQueueLast(song);
                     },
                   ),
                   _buildDivider(),
                 ],
                 Consumer<LibraryManager>(
                   builder: (context, library, _) {
-                    final isLiked = library.likedSongs.any((s) => s.id == song.id);
+                    final isLiked = library.likedSongs.any(
+                      (s) => s.id == song.id,
+                    );
                     return _OptionTile(
                       icon: HugeIcons.strokeRoundedFavourite,
-                      iconColor: isLiked ? const Color(0xFFFF2D55) : Colors.white,
-                      title: isLiked ? 'Remove from Liked' : 'Add to Liked Songs',
+                      iconColor: isLiked
+                          ? const Color(0xFFFF2D55)
+                          : Colors.white,
+                      title: isLiked
+                          ? 'Remove from Liked'
+                          : 'Add to Liked Songs',
                       onTap: () {
                         library.toggleLike(song);
                         // Do not pop the sheet on Like toggle
-                        AppToast.show(context, isLiked ? 'Removed from Liked' : 'Added to Liked', icon: HugeIcons.strokeRoundedFavourite);
+                        AppToast.show(
+                          context,
+                          isLiked ? 'Removed from Liked' : 'Added to Liked',
+                          icon: HugeIcons.strokeRoundedFavourite,
+                        );
                       },
                     );
                   },
@@ -147,21 +170,30 @@ class SongOptionsBottomSheet extends StatelessWidget {
                     if (remaining != null && remaining.inSeconds > 0) {
                       final m = remaining.inMinutes;
                       final s = remaining.inSeconds % 60;
-                      timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+                      timeStr =
+                          '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
                     }
 
                     return _OptionTile(
                       icon: HugeIcons.strokeRoundedClock01,
-                      iconColor: sleepTimer.isActive ? const Color(0xFFFF2D55) : Colors.white,
+                      iconColor: sleepTimer.isActive
+                          ? const Color(0xFFFF2D55)
+                          : Colors.white,
                       title: 'Sleep Timer',
                       trailing: timeStr != null
-                          ? Text(timeStr, style: const TextStyle(color: Color(0xFFFF2D55), fontWeight: FontWeight.bold))
+                          ? Text(
+                              timeStr,
+                              style: const TextStyle(
+                                color: Color(0xFFFF2D55),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
                           : null,
                       onTap: () {
                         _showSleepTimerPicker(context);
                       },
                     );
-                  }
+                  },
                 ),
                 _buildDivider(),
                 _OptionTile(
@@ -169,16 +201,75 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   title: 'View Artist',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistScreen(artist: Artist(id: '', name: song.artist, imageUrl: ''))));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ArtistScreen(
+                          artist: Artist(
+                            id: '',
+                            name: song.artist,
+                            imageUrl: '',
+                          ),
+                        ),
+                      ),
+                    );
                   },
                 ),
                 _buildDivider(),
-                _OptionTile(
-                  icon: HugeIcons.strokeRoundedDownload04,
-                  title: 'Download',
-                  onTap: () {
-                    Navigator.pop(context);
-                    AppToast.show(context, 'Downloads coming soon', icon: HugeIcons.strokeRoundedDownload04);
+                Consumer<DownloadManager>(
+                  builder: (context, downloadManager, child) {
+                    final isDownloaded = downloadManager.isDownloaded(song.id);
+                    final isDownloading = downloadManager.isDownloading(song.id);
+                    
+                    String title = 'Download';
+                    dynamic icon = HugeIcons.strokeRoundedDownload04;
+                    Widget? customIcon;
+
+                    if (isDownloaded) {
+                      title = 'Remove Download';
+                      icon = HugeIcons.strokeRoundedDelete02;
+                    } else if (isDownloading) {
+                      title = 'Cancel Download';
+                      icon = HugeIcons.strokeRoundedCancel01;
+                      
+                      final progress = downloadManager.downloadProgress[song.id] ?? 0.0;
+                      customIcon = SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            HugeIcon(icon: HugeIcons.strokeRoundedCancel01, size: 14, color: Colors.white, strokeWidth: 2),
+                            CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return _OptionTile(
+                      icon: icon,
+                      customIcon: customIcon,
+                      title: title,
+                      onTap: () {
+                        if (isDownloaded) {
+                          downloadManager.removeDownload(song.id);
+                          AppToast.show(context, 'Removed from downloads');
+                          // Can auto close when removing
+                          Navigator.pop(context);
+                        } else if (isDownloading) {
+                          downloadManager.cancelDownload(song.id);
+                          AppToast.show(context, 'Download cancelled');
+                          // Keep sheet open
+                        } else {
+                          downloadManager.startDownload(song, context.read<ExtractionService>());
+                          // Keep sheet open to show progress
+                        }
+                      },
+                    );
                   },
                 ),
                 _buildDivider(),
@@ -187,7 +278,9 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   title: 'Share',
                   onTap: () {
                     Navigator.pop(context);
-                    final shareText = 'Listen to "${song.title}" by ${song.artist}\n\nhttps://music.youtube.com/watch?v=${song.id}'; Share.share(shareText, subject: 'Shared from ScrollMusic');
+                    final shareText =
+                        'Listen to "${song.title}" by ${song.artist}\n\nhttps://music.youtube.com/watch?v=${song.id}';
+                    Share.share(shareText, subject: 'Shared from Loopr');
                   },
                 ),
               ],
@@ -213,13 +306,15 @@ class SongOptionsBottomSheet extends StatelessWidget {
 
 class _OptionTile extends StatelessWidget {
   final dynamic icon;
+  final Widget? customIcon;
   final String title;
   final VoidCallback onTap;
   final Color iconColor;
   final Widget? trailing;
 
   const _OptionTile({
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.title,
     required this.onTap,
     this.iconColor = Colors.white,
@@ -235,12 +330,10 @@ class _OptionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            HugeIcon(
-              icon: icon,
-              size: 24,
-              color: iconColor,
-              strokeWidth: 2,
-            ),
+            if (customIcon != null)
+              customIcon!
+            else if (icon != null)
+              HugeIcon(icon: icon, size: 24, color: iconColor, strokeWidth: 2),
             const SizedBox(width: 16),
             Expanded(
               child: Text(
@@ -280,17 +373,28 @@ void _showPlaylistPicker(BuildContext context, Song song) {
                 padding: EdgeInsets.all(20),
                 child: Text(
                   'Add to Playlist',
-                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.1)),
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: Colors.white.withValues(alpha: 0.1),
+              ),
               Consumer<LibraryManager>(
                 builder: (context, library, _) {
                   final playlists = library.customPlaylists;
                   if (playlists.isEmpty) {
                     return const Padding(
                       padding: EdgeInsets.all(32),
-                      child: Text('No playlists yet.', style: TextStyle(color: Colors.white54)),
+                      child: Text(
+                        'No playlists yet.',
+                        style: TextStyle(color: Colors.white54),
+                      ),
                     );
                   }
                   return ListView.builder(
@@ -305,11 +409,19 @@ void _showPlaylistPicker(BuildContext context, Song song) {
                           size: 24,
                           color: Color(0xFFFF2D55),
                         ),
-                        title: Text(p.name, style: const TextStyle(color: Colors.white)),
+                        title: Text(
+                          p.name,
+                          style: const TextStyle(color: Colors.white),
+                        ),
                         onTap: () {
+                          AppToast.show(
+                            context,
+                            'Added to ${p.name}',
+                            icon: HugeIcons.strokeRoundedPlaylist01,
+                          );
+                          final navigator = Navigator.of(context);
+                          navigator.pop();
                           library.addSongToPlaylist(p.id, song);
-                          Navigator.pop(context);
-                          AppToast.show(context, 'Added to ${p.name}', icon: HugeIcons.strokeRoundedPlaylist01);
                         },
                       );
                     },
@@ -349,42 +461,81 @@ void _showSleepTimerPicker(BuildContext context) {
                     padding: EdgeInsets.all(20),
                     child: Text(
                       'Sleep Timer',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  Divider(height: 1, thickness: 0.5, color: Colors.white.withValues(alpha: 0.1)),
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 32,
+                      horizontal: 24,
+                    ),
                     child: Consumer<SleepTimer>(
                       builder: (context, sleepTimer, _) {
                         if (sleepTimer.isActive) {
                           final remaining = sleepTimer.timeRemaining!;
                           final m = remaining.inMinutes;
                           final s = remaining.inSeconds % 60;
-                          final timeStr = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-                          
+                          final timeStr =
+                              '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+
                           return Column(
                             children: [
-                              const Text('Time Remaining', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                              const Text(
+                                'Time Remaining',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 16,
+                                ),
+                              ),
                               const SizedBox(height: 8),
-                              Text(timeStr, style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+                              Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               const SizedBox(height: 32),
                               SizedBox(
                                 width: double.infinity,
                                 height: 52,
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.1,
+                                    ),
                                     foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
                                     elevation: 0,
                                   ),
                                   onPressed: () {
+                                    AppToast.show(
+                                      context,
+                                      'Sleep timer disabled',
+                                    );
+                                    final navigator = Navigator.of(context);
+                                    navigator.pop();
                                     sleepTimer.cancel();
-                                    Navigator.pop(context);
-                                    AppToast.show(context, 'Sleep timer disabled');
                                   },
-                                  child: const Text('Turn Off Timer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                                  child: const Text(
+                                    'Turn Off Timer',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -401,9 +552,11 @@ void _showSleepTimerPicker(BuildContext context) {
                                   iconSize: 42,
                                   color: Colors.white54,
                                   icon: const Icon(Icons.remove_circle_outline),
-                                  onPressed: minutes > 5 ? () {
-                                    setState(() => minutes -= 5);
-                                  } : null,
+                                  onPressed: minutes > 5
+                                      ? () {
+                                          setState(() => minutes -= 5);
+                                        }
+                                      : null,
                                 ),
                                 const SizedBox(width: 24),
                                 SizedBox(
@@ -411,7 +564,11 @@ void _showSleepTimerPicker(BuildContext context) {
                                   child: Text(
                                     '$minutes min',
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 24),
@@ -419,9 +576,11 @@ void _showSleepTimerPicker(BuildContext context) {
                                   iconSize: 42,
                                   color: Colors.white,
                                   icon: const Icon(Icons.add_circle_outline),
-                                  onPressed: minutes < 120 ? () {
-                                    setState(() => minutes += 5);
-                                  } : null,
+                                  onPressed: minutes < 120
+                                      ? () {
+                                          setState(() => minutes += 5);
+                                        }
+                                      : null,
                                 ),
                               ],
                             ),
@@ -433,23 +592,40 @@ void _showSleepTimerPicker(BuildContext context) {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFFFF2D55),
                                   foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                   elevation: 0,
                                 ),
                                 onPressed: () {
                                   final homeController = context.read<HomeController>();
-                                  sleepTimer.start(Duration(minutes: minutes), () {
-                                    homeController.pause();
-                                  });
-                                  Navigator.pop(context);
-                                  AppToast.show(context, 'Sleeping in $minutes minutes', icon: HugeIcons.strokeRoundedClock01);
+                                  AppToast.show(
+                                    context,
+                                    'Sleeping in $minutes minutes',
+                                    icon: HugeIcons.strokeRoundedClock01,
+                                  );
+                                  final navigator = Navigator.of(context);
+                                  navigator.pop();
+                                  
+                                  sleepTimer.start(
+                                    Duration(minutes: minutes),
+                                    () {
+                                      homeController.pause();
+                                    },
+                                  );
                                 },
-                                child: const Text('Start Timer', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                                child: const Text(
+                                  'Start Timer',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         );
-                      }
+                      },
                     ),
                   ),
                   SizedBox(height: MediaQuery.of(context).padding.bottom),
@@ -457,10 +633,8 @@ void _showSleepTimerPicker(BuildContext context) {
               ),
             ),
           );
-        }
+        },
       );
     },
   );
 }
-
-

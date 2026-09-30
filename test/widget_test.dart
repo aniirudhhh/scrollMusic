@@ -7,6 +7,6 @@ void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    await tester.pumpWidget(ScrollMusicApp(prefs: prefs));
+    await tester.pumpWidget(LooprApp(prefs: prefs));
   });
 }

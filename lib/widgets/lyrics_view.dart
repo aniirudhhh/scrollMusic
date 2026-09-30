@@ -10,7 +10,10 @@ class LyricsView extends StatefulWidget {
     required this.durationNotifier,
     required this.positionNotifier,
     required this.isCurrent,
+    this.onTap,
   });
+
+  final VoidCallback? onTap;
 
   final String title;
   final String artist;
@@ -31,6 +34,8 @@ class _LyricsViewState extends State<LyricsView> {
   String _error = '';
   
   int _activeIndex = -1;
+  bool _isFirstScroll = true;
+  int _fetchGeneration = 0;
 
   @override
   void initState() {
@@ -70,6 +75,7 @@ class _LyricsViewState extends State<LyricsView> {
   }
 
   Future<void> _fetchLyrics() async {
+    final generation = ++_fetchGeneration;
     setState(() {
       _isLoading = true;
       _error = '';
@@ -81,17 +87,22 @@ class _LyricsViewState extends State<LyricsView> {
       final seconds = duration?.inSeconds ?? 0;
       final result = await _lyricsService.fetchLyrics(widget.title, widget.artist, seconds);
       
-      if (mounted) {
+      if (mounted && generation == _fetchGeneration) {
         setState(() {
           _isLoading = false;
           _lyrics = result;
+          _isFirstScroll = true;
           if (result == null || result.isEmpty) {
             _error = "Looks like we don't have lyrics for this song yet.";
           }
         });
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && generation == _fetchGeneration) _updateActiveIndex();
+        });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _fetchGeneration) {
         setState(() {
           _isLoading = false;
           _error = "Failed to load lyrics.";
@@ -105,7 +116,7 @@ class _LyricsViewState extends State<LyricsView> {
   void _updateActiveIndex() {
     if (_lyrics == null || _lyrics!.isEmpty) return;
     
-    final ms = widget.positionNotifier.value.inMilliseconds;
+    final ms = widget.positionNotifier.value.inMilliseconds + 400;
     
     // Find the last line that is <= current time
     int newIndex = -1;
@@ -117,8 +128,10 @@ class _LyricsViewState extends State<LyricsView> {
       }
     }
 
-    if (newIndex != _activeIndex) {
-      setState(() => _activeIndex = newIndex);
+    if (newIndex != _activeIndex || _isFirstScroll) {
+      if (newIndex != _activeIndex) {
+        setState(() => _activeIndex = newIndex);
+      }
       
       // Perfectly center the active line by manually animating the inner scroll controller
       if (_activeIndex >= 0) {
@@ -134,12 +147,18 @@ class _LyricsViewState extends State<LyricsView> {
               
               final currentScroll = _scrollController.offset;
               final targetScroll = currentScroll + offset.dy - (scrollBox.size.height / 2) + (box.size.height / 2);
+              final clampedTarget = targetScroll.clamp(0.0, _scrollController.position.maxScrollExtent);
               
-              _scrollController.animateTo(
-                targetScroll.clamp(0.0, _scrollController.position.maxScrollExtent),
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.easeOutCubic,
-              );
+              if (_isFirstScroll) {
+                _isFirstScroll = false;
+                _scrollController.jumpTo(clampedTarget);
+              } else {
+                _scrollController.animateTo(
+                  clampedTarget,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeOutCubic,
+                );
+              }
             }
           }
         }
@@ -157,19 +176,24 @@ class _LyricsViewState extends State<LyricsView> {
     
     if (_error.isNotEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.lyrics_outlined, color: Colors.white54, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                _error,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 16),
-              ),
-            ],
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Text(
+                  "Meow... no lyrics found for this song",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(160),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -193,8 +217,11 @@ class _LyricsViewState extends State<LyricsView> {
         ).createShader(rect);
       },
       blendMode: BlendMode.dstIn,
-      child: SingleChildScrollView(
-        controller: _scrollController,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: widget.onTap,
+        child: SingleChildScrollView(
+          controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 180, horizontal: 16),
         child: Column(
           children: List.generate(_lyrics!.length, (index) {
@@ -229,6 +256,7 @@ class _LyricsViewState extends State<LyricsView> {
               ),
             );
           }),
+          ),
         ),
       ),
     );

@@ -18,10 +18,14 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     _controller = VideoPlayerController.asset('assets/splash-screen.mp4')
       ..initialize().then((_) {
+        if (!mounted) return;
         // Ensure the first frame is shown and play the video
         setState(() {});
         _controller.play();
         _controller.setVolume(0); // Mute just in case
+      }).catchError((e) {
+        if (!mounted) return;
+        _navigateToHome();
       });
 
     // Add a listener to detect when the video finishes
@@ -29,10 +33,11 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _videoListener() {
-    if (_controller.value.isInitialized && 
-        !_controller.value.isPlaying && 
-        _controller.value.duration == _controller.value.position) {
-      _navigateToHome();
+    final value = _controller.value;
+    if (value.isInitialized && !value.isPlaying) {
+      if (value.position >= value.duration - const Duration(milliseconds: 50)) {
+        _navigateToHome();
+      }
     }
   }
 

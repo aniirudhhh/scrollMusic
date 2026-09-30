@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import '../../models/song.dart';
 import '../../extraction/extraction_service.dart';
 import '../profile/user_profile_manager.dart';
@@ -37,7 +38,7 @@ class CandidateGenerator {
         final related = await extractionService.fetchRecommendations(
           seedTrack.id,
         );
-        print('CANDIDATES: Fetched ${related.length} related tracks from YT Music for seed ${seedTrack.title}');
+        debugPrint('CANDIDATES: Fetched ${related.length} related tracks from YT Music for seed ${seedTrack.title}');
         
         if (related.isNotEmpty) {
           gotRelated = true;
@@ -48,7 +49,7 @@ class CandidateGenerator {
           }
         }
       } catch (e) {
-        print('CANDIDATES: Error fetching related: $e');
+        debugPrint('CANDIDATES: Error fetching related: $e');
       }
 
       // IF YT MUSIC FAILED TO RETURN RELATED TRACKS (OR THREW ERROR), FALLBACK TO SEARCHING
@@ -56,7 +57,7 @@ class CandidateGenerator {
         // Searching for Title + Artist usually makes YT Music's search algorithm 
         // return the song itself AND a list of very similar songs (same genre/vibe)
         final fallbackQuery = '${seedTrack.title} ${seedTrack.artist}';
-        print('CANDIDATES: Fallback to searching: $fallbackQuery');
+        debugPrint('CANDIDATES: Fallback to searching: $fallbackQuery');
         try {
           final searchResults = await extractionService.search(fallbackQuery);
           for (int i = 0; i < searchResults.length; i++) {
@@ -65,7 +66,7 @@ class CandidateGenerator {
             seedRelatedRanks[song.id] = i + 5; // Rank them highly as pseudo-related
           }
         } catch (e) {
-          print('CANDIDATES: Fallback search also failed: $e');
+          debugPrint('CANDIDATES: Fallback search also failed: $e');
         }
       }
     }
@@ -77,15 +78,15 @@ class CandidateGenerator {
         candidates.length < _minCandidatesBeforeDiscovery ||
         (_generationCount % _discoveryRefreshInterval == 0);
 
-    print('CANDIDATES: Needs discovery? $needsDiscovery (Current count: ${candidates.length})');
+    debugPrint('CANDIDATES: Needs discovery? $needsDiscovery (Current count: ${candidates.length})');
 
     if (needsDiscovery) {
       try {
         final explore = await extractionService.fetchDiscoveryFeed();
-        print('CANDIDATES: Fetched ${explore.length} discovery tracks');
+        debugPrint('CANDIDATES: Fetched ${explore.length} discovery tracks');
         candidates.addAll(explore);
       } catch (e) {
-        print('CANDIDATES: Error fetching discovery: $e');
+        debugPrint('CANDIDATES: Error fetching discovery: $e');
       }
     }
 
@@ -93,7 +94,7 @@ class CandidateGenerator {
     final seen = <String>{};
     final uniqueCandidates = candidates.where((s) => seen.add(s.id)).toList();
     
-    print('CANDIDATES: Total unique candidates: ${uniqueCandidates.length}');
+    debugPrint('CANDIDATES: Total unique candidates: ${uniqueCandidates.length}');
 
     return CandidateContext(uniqueCandidates, seedRelatedRanks);
   }

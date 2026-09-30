@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 class WavyProgressBar extends StatefulWidget {
   final double value;
   final ValueChanged<double>? onChanged;
+  final ValueChanged<double>? onChangeEnd;
   final Color activeColor;
   final Color inactiveColor;
   final bool isPaused;
@@ -12,6 +13,7 @@ class WavyProgressBar extends StatefulWidget {
     super.key,
     required this.value,
     this.onChanged,
+    this.onChangeEnd,
     this.activeColor = Colors.white,
     this.inactiveColor = Colors.white24,
     this.isPaused = false,
@@ -24,6 +26,7 @@ class WavyProgressBar extends StatefulWidget {
 class _WavyProgressBarState extends State<WavyProgressBar>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  double? _dragValue;
 
   @override
   void initState() {
@@ -55,24 +58,52 @@ class _WavyProgressBarState extends State<WavyProgressBar>
     super.dispose();
   }
 
-  void _handleUpdate(Offset localPosition, Size size) {
-    if (widget.onChanged != null) {
+  void _handleDragUpdate(Offset localPosition, Size size) {
+    if (widget.onChanged != null || widget.onChangeEnd != null) {
       final dx = localPosition.dx.clamp(0.0, size.width);
-      widget.onChanged!(dx / size.width);
+      final newValue = dx / size.width;
+      setState(() {
+        _dragValue = newValue;
+      });
+      widget.onChanged?.call(newValue);
     }
+  }
+
+  void _handleDragEnd() {
+    if (_dragValue != null && widget.onChangeEnd != null) {
+      widget.onChangeEnd!(_dragValue!);
+    }
+    setState(() {
+      _dragValue = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        _handleDragUpdate(details.localPosition, box.size);
+      },
       onHorizontalDragUpdate: (details) {
         final box = context.findRenderObject() as RenderBox;
-        _handleUpdate(details.localPosition, box.size);
+        _handleDragUpdate(details.localPosition, box.size);
+      },
+      onHorizontalDragEnd: (details) {
+        _handleDragEnd();
       },
       onTapDown: (details) {
         final box = context.findRenderObject() as RenderBox;
-        _handleUpdate(details.localPosition, box.size);
+        _handleDragUpdate(details.localPosition, box.size);
+      },
+      onTapUp: (details) {
+        _handleDragEnd();
+      },
+      onTapCancel: () {
+        setState(() {
+          _dragValue = null;
+        });
       },
       child: Container(
         height: 32, // Generous touch target
@@ -82,7 +113,7 @@ class _WavyProgressBarState extends State<WavyProgressBar>
           builder: (context, child) {
             return CustomPaint(
               painter: _WavyPainter(
-                value: widget.value,
+                value: _dragValue ?? widget.value,
                 phase: _controller.value * 2 * math.pi, // 0 to 2*PI
                 activeColor: widget.activeColor,
                 inactiveColor: widget.inactiveColor,
@@ -139,11 +170,12 @@ class _WavyPainter extends CustomPainter {
     // 2. Draw Active Track (Wavy)
     final path = Path();
     final waveAmplitude = 5.0; // Taller waves
-    final waveFrequency = 0.15; // Slightly reduced frequency to remove 1-2 waves
+    final waveFrequency =
+        0.15; // Slightly reduced frequency to remove 1-2 waves
 
     path.moveTo(0, centerY);
 
-    for (double x = 0; x <= thumbX; x += 8.0) {
+    for (double x = 0; x <= thumbX; x += 1.0) {
       // Gentle taper only at the very start so it doesn't jump
       double taper = 1.0;
       if (x < 12) {

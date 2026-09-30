@@ -28,14 +28,20 @@ dependencies:
 
   # Simple key-value persistence (queue position, preferences)
   shared_preferences: ^2.5.5
-  youtube_explode_dart: ^3.1.0
-  video_player: ^2.14.0
   http: ^1.6.0
   hugeicons: ^1.2.0
   wavy_slider: ^1.0.0
   webview_flutter: ^4.14.1
   share_plus: ^13.3.0
   material_color_utilities: ^0.13.0
+  url_launcher: ^6.3.2
+  path_provider: ^2.1.6
+  dio: ^5.11.1
+  connectivity_plus: ^6.0.3
+  flutter_secure_storage: ^11.2.0
+  video_player: ^2.14.0
+  sentry_flutter: ^9.30.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -59,3 +65,6 @@ flutter_launcher_icons:
   image_path: "assets/applogo-new.png"
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: "assets/applogo-new.png"
+
+
+

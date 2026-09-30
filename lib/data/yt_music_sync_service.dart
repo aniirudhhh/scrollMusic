@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,11 +10,71 @@ import '../models/playlist.dart';
 class YTMusicSyncService {
   static const String _baseUrl = 'https://music.youtube.com/youtubei/v1';
   
-  static Future<String?> getCookie() async {
+  static const _storage = FlutterSecureStorage();
+
+  static Future<void> _migrateIfNeeded() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('yt_auth_cookie');
+    if (prefs.containsKey('yt_auth_cookie')) {
+      final cookie = prefs.getString('yt_auth_cookie');
+      if (cookie != null) await _storage.write(key: 'yt_auth_cookie', value: cookie);
+      await prefs.remove('yt_auth_cookie');
+    }
+    if (prefs.containsKey('yt_profile_name')) {
+      final name = prefs.getString('yt_profile_name');
+      if (name != null) await _storage.write(key: 'yt_profile_name', value: name);
+      await prefs.remove('yt_profile_name');
+    }
+    if (prefs.containsKey('yt_profile_email')) {
+      final email = prefs.getString('yt_profile_email');
+      if (email != null) await _storage.write(key: 'yt_profile_email', value: email);
+      await prefs.remove('yt_profile_email');
+    }
+    if (prefs.containsKey('yt_profile_avatar')) {
+      final avatar = prefs.getString('yt_profile_avatar');
+      if (avatar != null) await _storage.write(key: 'yt_profile_avatar', value: avatar);
+      await prefs.remove('yt_profile_avatar');
+    }
+  }
+
+  static Future<void> setAuthCookie(String cookie) async {
+    await _migrateIfNeeded();
+    await _storage.write(key: 'yt_auth_cookie', value: cookie);
+  }
+
+  static Future<void> clearAuthCookie() async {
+    await _migrateIfNeeded();
+    await _storage.delete(key: 'yt_auth_cookie');
+  }
+
+  static Future<String?> getCookie() async {
+    await _migrateIfNeeded();
+    return await _storage.read(key: 'yt_auth_cookie');
   }
   
+
+  static Future<Map<String, String>?> getCachedProfile() async {
+    await _migrateIfNeeded();
+    final name = await _storage.read(key: 'yt_profile_name');
+    final email = await _storage.read(key: 'yt_profile_email');
+    final avatar = await _storage.read(key: 'yt_profile_avatar');
+    
+    if (name != null) {
+      return {
+        'name': name,
+        'email': email ?? '',
+        'avatarUrl': avatar ?? '',
+      };
+    }
+    return null;
+  }
+
+  static Future<void> clearCachedProfile() async {
+    await _migrateIfNeeded();
+    await _storage.delete(key: 'yt_profile_name');
+    await _storage.delete(key: 'yt_profile_email');
+    await _storage.delete(key: 'yt_profile_avatar');
+  }
+
   static bool hasCookie(String? cookie) {
     return cookie != null && cookie.isNotEmpty && 
            (cookie.contains('SAPISID') || cookie.contains('__Secure-3PSID'));
@@ -348,7 +409,10 @@ class YTMusicSyncService {
 
   static Future<Map<String, String>?> fetchUserProfile() async {
     final cookie = await getCookie();
-    if (!hasCookie(cookie)) return null;
+    if (!hasCookie(cookie)) {
+      debugPrint('No cookie found');
+      return null;
+    }
 
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
@@ -363,56 +427,89 @@ class YTMusicSyncService {
     }
 
     try {
-      final url = Uri.parse('$_baseUrl/account/account_menu?prettyPrint=false');
+      final url = Uri.parse('${_baseUrl}/account/account_menu?prettyPrint=false');
       final response = await http.post(
         url,
         headers: headers,
         body: jsonEncode({
           "context": {
             "client": {
-              "clientName": "WEB", 
-              "clientVersion": "2.20231214.01.00",
+              "clientName": "WEB_REMIX", 
+              "clientVersion": "1.20231214.01.00",
             }
           }
         }),
       );
 
+      debugPrint('Profile fetch status: ');
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         String? avatarUrl;
         String? accountName;
+        String? accountEmail;
         
-        // Recursive search for account info
         List<Map<String, dynamic>> accountItems = [];
-        _findKeys(data, 'accountItem', accountItems);
-        
+        _findKeys(data, 'accountName', accountItems);
         if (accountItems.isNotEmpty) {
-           final item = accountItems.first['accountItem'];
-           
-           // Name can be in simpleText or runs
-           accountName = item?['accountName']?['simpleText'];
-           if (accountName == null) {
-             final runs = item?['accountName']?['runs'];
-             if (runs != null && runs.isNotEmpty) {
-               accountName = runs[0]['text'];
-             }
+           final item = accountItems.first;
+           accountName = item['accountName']?['simpleText'];
+           if (accountName == null && item['accountName']?['runs'] != null) {
+             accountName = item['accountName']['runs'][0]['text'];
            }
+        }
+        
+        List<Map<String, dynamic>> bylineItems = [];
+        _findKeys(data, 'accountByline', bylineItems);
+        if (bylineItems.isNotEmpty) {
+           final bylineItem = bylineItems.first;
+           accountEmail = bylineItem['accountByline']?['simpleText'] ?? bylineItem['accountByline']?['runs']?[0]?['text'];
+        }
+        
+        if (accountEmail == null) {
+           List<Map<String, dynamic>> emailItems = [];
+           _findKeys(data, 'email', emailItems);
+           if (emailItems.isNotEmpty) {
+               accountEmail = emailItems.first['email']?['simpleText'] ?? emailItems.first['email']?.toString();
+           }
+        }
+        
+        // Final fallback: Use Regex to extract the first email address found in the entire JSON payload!
+        if (accountEmail == null) {
+            final emailRegExp = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}');
+            final match = emailRegExp.firstMatch(response.body);
+            if (match != null) {
+              accountEmail = match.group(0);
+            }
+        }
            
-           final thumbnails = item?['accountPhoto']?['thumbnails'];
+        List<Map<String, dynamic>> photoItems = [];
+        _findKeys(data, 'accountPhoto', photoItems);
+        if (photoItems.isNotEmpty) {
+           final thumbnails = photoItems.first['accountPhoto']?['thumbnails'];
            if (thumbnails != null && thumbnails.isNotEmpty) {
              avatarUrl = thumbnails.last['url'];
            }
         }
         
-        if (avatarUrl != null) {
-          return {
+        if (accountName != null || accountEmail != null || avatarUrl != null) {
+          final profileData = {
             'name': accountName ?? 'YouTube User',
-            'avatarUrl': avatarUrl,
+            'email': accountEmail ?? '',
+            'avatarUrl': avatarUrl ?? '',
           };
+          
+          // Save to cache
+          await _migrateIfNeeded();
+          await _storage.write(key: 'yt_profile_name', value: profileData['name']!);
+          await _storage.write(key: 'yt_profile_email', value: profileData['email']!);
+          await _storage.write(key: 'yt_profile_avatar', value: profileData['avatarUrl']!);
+          
+          return profileData;
         }
       }
     } catch (e) {
-      debugPrint('Error fetching user profile: $e');
+      debugPrint('Error fetching user profile: ');
     }
     return null;
   }
@@ -548,3 +645,7 @@ class YTMusicSyncService {
     return null;
   }
 }
+
+
+
+

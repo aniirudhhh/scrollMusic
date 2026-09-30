@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../widgets/coming_soon_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -199,7 +200,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                           color: Colors.white,
                         ),
                       ),
-                      onPressed: () {},
+                      onPressed: () => showComingSoonDialog(context),
                     ),
                   ),
                 ],
@@ -307,7 +308,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                 size: 24,
                                 color: Colors.white,
                               ),
-                              onPressed: () {},
+                              onPressed: () => showComingSoonDialog(context),
                             ),
                           ),
                         ],
@@ -444,7 +445,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                       color: Colors.white54,
                                       size: 24,
                                     ),
-                                    onPressed: () {},
+                                    onPressed: () => showComingSoonDialog(context),
                                   ),
                                 ],
                               ),

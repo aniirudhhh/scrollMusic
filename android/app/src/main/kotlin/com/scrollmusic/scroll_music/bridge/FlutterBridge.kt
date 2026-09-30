@@ -1,4 +1,4 @@
-package com.scrollmusic.scroll_music.bridge
+﻿package com.scrollmusic.scroll_music.bridge
 
 import android.content.Context
 import com.scrollmusic.scroll_music.extraction.ExtractionException
@@ -20,9 +20,9 @@ import org.schabi.newpipe.extractor.downloader.Downloader
  * and routes calls to [ExtractionManager] and [NativePlaybackManager].
  *
  * Channel contracts (must match native_bridge.dart):
- *   MethodChannel  "com.scrollmusic/extraction"     → extractStream(videoId)
- *   MethodChannel  "com.scrollmusic/playback"       → play, pause, resume, stop, seek
- *   EventChannel   "com.scrollmusic/playback_events" → stateChange, position, error events
+ *   MethodChannel  "com.scrollmusic/extraction"     â†’ extractStream(videoId)
+ *   MethodChannel  "com.scrollmusic/playback"       â†’ play, pause, resume, stop, seek
+ *   EventChannel   "com.scrollmusic/playback_events" â†’ stateChange, position, error events
  */
 class FlutterBridge(private val context: Context) {
 
@@ -32,7 +32,7 @@ class FlutterBridge(private val context: Context) {
     private val player = NativePlaybackManager(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // EventChannel sink — null when Flutter isn't listening
+    // EventChannel sink â€” null when Flutter isn't listening
     private var eventSink: EventChannel.EventSink? = null
 
     fun setup(
@@ -65,7 +65,7 @@ class FlutterBridge(private val context: Context) {
         })
     }
 
-    // ─── Extraction calls ──────────────────────────────────────────────────────
+    // â”€â”€â”€ Extraction calls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private fun handleExtractionCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -105,9 +105,10 @@ class FlutterBridge(private val context: Context) {
             "search" -> {
                 val query = call.argument<String>("query")
                     ?: return result.error("INVALID_ARGS", "query is required", null)
+                val filter = call.argument<String>("filter")
                 scope.launch {
                     try {
-                        val searchResults = searchManager.search(query)
+                        val searchResults = searchManager.search(query, filter)
                         result.success(searchResults)
                     } catch (e: Exception) {
                         result.error("SEARCH_FAILED", e.message, null)
@@ -130,7 +131,7 @@ class FlutterBridge(private val context: Context) {
         }
     }
 
-    // ─── Playback calls ────────────────────────────────────────────────────────
+    // â”€â”€â”€ Playback calls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private fun handlePlaybackCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -175,3 +176,4 @@ class FlutterBridge(private val context: Context) {
         scope.cancel()
     }
 }
+

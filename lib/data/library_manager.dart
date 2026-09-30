@@ -31,21 +31,35 @@ class LibraryManager extends ChangeNotifier {
   void _load() {
     // Load Liked Songs
     final likedJson = _prefs.getStringList(_kLikedSongsKey) ?? [];
-    _likedSongs = likedJson.map((jsonStr) => Song.fromJson(jsonDecode(jsonStr))).toList();
+    for (var jsonStr in likedJson) {
+      try {
+        _likedSongs.add(Song.fromJson(jsonDecode(jsonStr)));
+      } catch (_) {}
+    }
 
     // Load Custom Playlists
     final playlistsJson = _prefs.getStringList(_kCustomPlaylistsKey) ?? [];
-    _customPlaylists = playlistsJson
-        .map((jsonStr) => Playlist.fromJson(jsonDecode(jsonStr)))
-        .toList();
+    for (var jsonStr in playlistsJson) {
+      try {
+        _customPlaylists.add(Playlist.fromJson(jsonDecode(jsonStr)));
+      } catch (_) {}
+    }
 
     // Load Recently Played
     final recentJson = _prefs.getStringList(_kRecentlyPlayedKey) ?? [];
-    _recentlyPlayed = recentJson.map((jsonStr) => Song.fromJson(jsonDecode(jsonStr))).toList();
+    for (var jsonStr in recentJson) {
+      try {
+        _recentlyPlayed.add(Song.fromJson(jsonDecode(jsonStr)));
+      } catch (_) {}
+    }
 
     // Load Followed Artists
     final artistsJson = _prefs.getStringList(_kFollowedArtistsKey) ?? [];
-    _followedArtists = artistsJson.map((jsonStr) => Artist.fromJson(jsonDecode(jsonStr))).toList();
+    for (var jsonStr in artistsJson) {
+      try {
+        _followedArtists.add(Artist.fromJson(jsonDecode(jsonStr)));
+      } catch (_) {}
+    }
 
     notifyListeners();
   }
@@ -162,11 +176,30 @@ class LibraryManager extends ChangeNotifier {
 
   // ─── Custom Playlists ─────────────────────────────────────────────────────
 
-  Future<void> createPlaylist(String name) async {
+  Future<void> createPlaylist(String name, {String? description, String? imagePath}) async {
     if (name.trim().isEmpty) return;
     final id = DateTime.now().millisecondsSinceEpoch.toString();
-    _customPlaylists.add(Playlist(id: id, name: name.trim(), songs: []));
+    _customPlaylists.add(Playlist(
+      id: id,
+      name: name.trim(),
+      description: description,
+      imagePath: imagePath,
+      songs: [],
+    ));
     await _savePlaylists();
+  }
+
+  Future<void> updatePlaylist(String id, String name, String? description, String? imagePath) async {
+    final idx = _customPlaylists.indexWhere((p) => p.id == id);
+    if (idx != -1) {
+      _customPlaylists[idx] = _customPlaylists[idx].copyWith(
+        name: name.trim(),
+        description: description,
+        imagePath: imagePath,
+      );
+      notifyListeners();
+      await _savePlaylists();
+    }
   }
 
   Future<void> deletePlaylist(String id) async {

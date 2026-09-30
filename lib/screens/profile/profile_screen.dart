@@ -1,16 +1,20 @@
+import 'dart:io';
+import 'profile_settings_screen.dart';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/coming_soon_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:hugeicons/hugeicons.dart';
 import '../../data/library_manager.dart';
+import '../../data/download_manager.dart';
 import '../../screens/home/home_controller.dart';
 import '../../models/playlist.dart';
 import '../../models/song.dart';
 import '../../core/utils/app_toast.dart';
 import '../artist/artist_screen.dart';
 import '../../data/yt_music_sync_service.dart';
-import 'account_screen.dart';
+import '../playlist/playlist_edit_sheet.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -41,19 +45,7 @@ class ProfileScreen extends StatelessWidget {
                         letterSpacing: -0.5,
                       ),
                     ),
-                    Builder(
-                      builder: (context) => IconButton(
-                        icon: const HugeIcon(icon: HugeIcons.strokeRoundedSettings01, color: Colors.white, size: 28),
-                        onPressed: () {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) => const _SettingsBottomSheet(),
-                          );
-                        },
-                      ),
-                    ),
+                    
                   ],
                 ),
               ),
@@ -89,7 +81,7 @@ class ProfileScreen extends StatelessWidget {
                     _LibraryCategoryTile(
                       title: 'Albums',
                       icon: HugeIcons.strokeRoundedAlbum02,
-                      onTap: () => AppToast.show(context, 'Albums coming soon'),
+                      onTap: () => showComingSoonDialog(context),
                     ),
                     _LibraryCategoryTile(
                       title: 'Liked Songs',
@@ -109,7 +101,7 @@ class ProfileScreen extends StatelessWidget {
                     _LibraryCategoryTile(
                       title: 'Made for You',
                       icon: HugeIcons.strokeRoundedUserCircle,
-                      onTap: () => AppToast.show(context, 'Made for You coming soon'),
+                      onTap: () => showComingSoonDialog(context),
                     ),
                     _LibraryCategoryTile(
                       title: 'Recently Played',
@@ -127,10 +119,32 @@ class ProfileScreen extends StatelessWidget {
                       },
                     ),
                     _LibraryCategoryTile(
-                      title: 'Downloaded',
+                      title: 'Downloads',
                       icon: HugeIcons.strokeRoundedDownload04,
+                      isLast: false,
+                      onTap: () {
+                        final downloadManager = context.read<DownloadManager>();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => _PlaylistDetailScreen(
+                              title: 'Downloads',
+                              songs: downloadManager.downloadedSongs.map((d) => d.song).toList(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _LibraryCategoryTile(
+                      title: 'Profile & Settings',
+                      icon: HugeIcons.strokeRoundedSettings01,
                       isLast: true,
-                      onTap: () => AppToast.show(context, 'Downloads coming soon'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
+                        );
+                      },
                     ),
                   ],
                 );
@@ -317,7 +331,7 @@ class _LibraryCategoryTile extends StatelessWidget {
   }
 }
 
-// ─── Internal Playlists View ──────────────────────────────────────────────
+// â”€â”€â”€ Internal Playlists View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _PlaylistsListView extends StatelessWidget {
   const _PlaylistsListView();
@@ -364,6 +378,7 @@ class _PlaylistsListView extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => _PlaylistDetailScreen(
+                          playlist: playlist,
                           title: playlist.name,
                           songs: playlist.songs,
                           playlistId: playlist.id,
@@ -384,9 +399,11 @@ class _PlaylistsListView extends StatelessWidget {
                           border: Border.all(color: Colors.white.withOpacity(0.1)),
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: playlist.songs.isNotEmpty
-                            ? CachedNetworkImage(imageUrl: playlist.songs.first.artwork, fit: BoxFit.cover)
-                            : const HugeIcon(icon: HugeIcons.strokeRoundedMusicNote01, color: Colors.white30, size: 32),
+                        child: playlist.imagePath != null
+                            ? Image.file(File(playlist.imagePath!), fit: BoxFit.cover)
+                            : (playlist.songs.isNotEmpty
+                                ? CachedNetworkImage(imageUrl: playlist.songs.last.artwork, fit: BoxFit.cover)
+                                : const HugeIcon(icon: HugeIcons.strokeRoundedMusicNote01, color: Colors.white30, size: 32)),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -419,79 +436,10 @@ class _PlaylistsListView extends StatelessWidget {
 }
 
 void _showCreatePlaylistModal(BuildContext context, LibraryManager library) {
-  final textController = TextEditingController();
-
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: const Color(0xFF1C1C1E),
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          left: 24,
-          right: 24,
-          top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text(
-              'New Playlist',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: textController,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                hintText: 'Playlist Name',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF2D55),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
-                ),
-                onPressed: () {
-                  final name = textController.text.trim();
-                  if (name.isNotEmpty) {
-                    library.createPlaylist(name);
-                    Navigator.pop(context);
-                    AppToast.show(context, 'Playlist "$name" created');
-                  }
-                },
-                child: const Text('Create', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
+  PlaylistEditDialog.show(context);
 }
 
-// ─── Playlist Details View ────────────────────────────────────────────────
+// â”€â”€â”€ Playlist Details View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _PlaylistDetailScreen extends StatelessWidget {
   const _PlaylistDetailScreen({
@@ -499,16 +447,27 @@ class _PlaylistDetailScreen extends StatelessWidget {
     required this.songs,
     this.playlistId,
     this.library,
+    this.playlist,
   });
 
   final String title;
   final List<Song> songs;
   final String? playlistId;
   final LibraryManager? library;
+  final Playlist? playlist;
 
   @override
   Widget build(BuildContext context) {
-    final hasArtwork = songs.isNotEmpty && songs.first.artwork.isNotEmpty;
+    // If it's a dynamic playlist object from provider, listen to it to update UI when edited
+    final p = playlistId != null && library != null 
+        ? context.watch<LibraryManager>().customPlaylists.firstWhere((e) => e.id == playlistId, orElse: () => playlist!)
+        : playlist;
+
+    final displayTitle = p?.name ?? title;
+    final displayDesc = p?.description;
+    final displayImage = p?.imagePath;
+
+    final hasArtwork = (displayImage != null) || (songs.isNotEmpty && songs.last.artwork.isNotEmpty);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -522,6 +481,13 @@ class _PlaylistDetailScreen extends StatelessWidget {
             actions: [
               if (playlistId != null && library != null)
                 IconButton(
+                  icon: const HugeIcon(icon: HugeIcons.strokeRoundedPencilEdit01, color: Colors.white, size: 24),
+                  onPressed: () {
+                    PlaylistEditDialog.show(context, existingPlaylist: p);
+                  },
+                ),
+              if (playlistId != null && library != null)
+                IconButton(
                   icon: const HugeIcon(icon: HugeIcons.strokeRoundedDelete02, color: Color(0xFFFF2D55), size: 24),
                   onPressed: () {
                     library!.deletePlaylist(playlistId!);
@@ -532,7 +498,7 @@ class _PlaylistDetailScreen extends StatelessWidget {
             ],
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
-                title,
+                displayTitle,
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -544,9 +510,11 @@ class _PlaylistDetailScreen extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (hasArtwork)
+                  if (displayImage != null)
+                    Image.file(File(displayImage), fit: BoxFit.cover)
+                  else if (songs.isNotEmpty)
                     CachedNetworkImage(
-                      imageUrl: songs.first.artwork,
+                      imageUrl: songs.last.artwork,
                       fit: BoxFit.cover,
                     )
                   else
@@ -580,6 +548,21 @@ class _PlaylistDetailScreen extends StatelessWidget {
             ),
           ),
           
+          if (displayDesc != null && displayDesc.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                child: Text(
+                  displayDesc,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8), 
+                    fontSize: 16,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+            
           if (songs.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -697,7 +680,7 @@ class _PlaylistDetailScreen extends StatelessWidget {
   }
 }
 
-// ─── Artists List View ────────────────────────────────────────────────────
+// â”€â”€â”€ Artists List View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _ArtistsListView extends StatelessWidget {
   const _ArtistsListView();
@@ -779,247 +762,4 @@ class _ArtistsListView extends StatelessWidget {
   }
 }
 
-class _SettingsBottomSheet extends StatefulWidget {
-  const _SettingsBottomSheet();
 
-  @override
-  State<_SettingsBottomSheet> createState() => _SettingsBottomSheetState();
-}
-
-class _SettingsBottomSheetState extends State<_SettingsBottomSheet> {
-  bool _isLoggedIn = false;
-  String? _accountName;
-  String? _avatarUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkLoginStatus();
-  }
-
-  Future<void> _checkLoginStatus() async {
-    final cookie = await YTMusicSyncService.getCookie();
-    final hasCookie = YTMusicSyncService.hasCookie(cookie);
-    
-    if (hasCookie) {
-      final profile = await YTMusicSyncService.fetchUserProfile();
-      if (mounted) {
-        setState(() {
-          _isLoggedIn = true;
-          _accountName = profile?['name'];
-          _avatarUrl = profile?['avatarUrl'];
-        });
-      }
-    }
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, top: 24, bottom: 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.5),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTile(String title, dynamic icon, {VoidCallback? onTap}) {
-    return ListTile(
-      onTap: onTap,
-      leading: HugeIcon(icon: icon, color: Colors.white, size: 20),
-      title: Text(
-        title,
-        style: const TextStyle(color: Colors.white, fontSize: 16),
-      ),
-      trailing: HugeIcon(
-        icon: HugeIcons.strokeRoundedArrowRight01,
-        color: Colors.white.withOpacity(0.3),
-        size: 18,
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.9,
-          decoration: BoxDecoration(
-            color: const Color(0xFF131315).withOpacity(0.7),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
-          ),
-          child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.only(left: 20, right: 20, top: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const SizedBox(width: 40),
-                const Text(
-                  'Settings',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              children: [
-                // Profile section
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        backgroundImage: _avatarUrl != null ? CachedNetworkImageProvider(_avatarUrl!) : null,
-                        child: _avatarUrl == null
-                            ? const HugeIcon(icon: HugeIcons.strokeRoundedUserCircle, color: Colors.white, size: 40)
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _accountName ?? (_isLoggedIn ? 'User' : 'Guest'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Status Pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          HugeIcon(icon: HugeIcons.strokeRoundedActivity01, color: Colors.white.withOpacity(0.7), size: 20),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Account Status',
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _isLoggedIn ? Colors.green : Colors.grey,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isLoggedIn ? 'Synced' : 'Offline',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          HugeIcon(
-                            icon: HugeIcons.strokeRoundedArrowRight01,
-                            color: Colors.white.withOpacity(0.3),
-                            size: 18,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                
-                _buildSectionHeader('PERSONALIZE'),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildTile('YouTube Music Sync', HugeIcons.strokeRoundedYoutube, onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AccountScreen()),
-                        );
-                      }),
-                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
-                      _buildTile('Audio Quality', HugeIcons.strokeRoundedMusicNote01, onTap: () {}),
-                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
-                      _buildTile('Playback Settings', HugeIcons.strokeRoundedSettings01, onTap: () {}),
-                    ],
-                  ),
-                ),
-
-                _buildSectionHeader('NEED HELP?'),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildTile('Tips and Tricks', HugeIcons.strokeRoundedIdea01, onTap: () {}),
-                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
-                      _buildTile('Frequently Asked Questions', HugeIcons.strokeRoundedHelpCircle, onTap: () {}),
-                      Divider(height: 1, color: Colors.white.withOpacity(0.1), indent: 52),
-                      _buildTile('Contact Us', HugeIcons.strokeRoundedMail01, onTap: () {}),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 40),
-              ],
-            ),
-          ),
-        ],
-      ),
-        ),
-      ),
-    );
-  }
-}
