@@ -12,16 +12,21 @@ class MiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<HomeController>(
-      builder: (context, controller, child) {
+    return Selector<HomeController, ({String? songId, PlaybackState state})>(
+      selector: (context, controller) => (
+        songId: controller.currentSong?.id,
+        state: controller.playbackState,
+      ),
+      builder: (context, data, child) {
+        final controller = context.read<HomeController>();
         final song = controller.currentSong;
         if (song == null) {
           return const SizedBox.shrink();
         }
 
         final isPlaying =
-            controller.playbackState == PlaybackState.playing ||
-            controller.playbackState == PlaybackState.buffering;
+            data.state == PlaybackState.playing ||
+            data.state == PlaybackState.buffering;
 
         return GestureDetector(
           onTap: () {

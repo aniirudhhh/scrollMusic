@@ -31,7 +31,7 @@ class SearchScreenController extends ChangeNotifier {
   final Connectivity _connectivity = Connectivity();
 
   SearchScreenController({required this.repository, required this.downloadManager}) {
-    suggestions = List.from(history);
+    suggestions = history.take(5).toList();
     
     _connectivity.checkConnectivity().then((result) {
       isOffline = result.contains(ConnectivityResult.none);
@@ -52,7 +52,7 @@ class SearchScreenController extends ChangeNotifier {
     }
 
     if (query.trim().isEmpty) {
-      suggestions = List.from(history);
+      suggestions = history.take(5).toList();
       notifyListeners();
       return;
     }
@@ -79,7 +79,7 @@ class SearchScreenController extends ChangeNotifier {
       try {
         final results = await repository.suggestions(query);
         if (isEditing && generation == _suggestionGeneration) {
-          suggestions = results;
+          suggestions = results.take(5).toList();
           notifyListeners();
         }
       } catch (e) {
@@ -149,7 +149,7 @@ class SearchScreenController extends ChangeNotifier {
   void setEditing(bool editing) {
     isEditing = editing;
     if (editing && currentQuery.isEmpty) {
-      suggestions = List.from(history);
+      suggestions = history.take(5).toList();
     }
     notifyListeners();
   }

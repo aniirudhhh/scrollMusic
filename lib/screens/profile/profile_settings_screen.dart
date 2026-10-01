@@ -13,6 +13,8 @@ import '../../data/library_manager.dart';
 import '../../data/yt_music_sync_service.dart';
 import '../../core/utils/app_toast.dart';
 import 'yt_auth_screen.dart';
+import 'profile_screen.dart';
+import '../../data/download_manager.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -373,7 +375,22 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           Divider(height: 1, color: Colors.white.withAlpha(25), indent: 52),
                           _buildTile('Playback Settings', HugeIcons.strokeRoundedSettings01, onTap: () => showComingSoonDialog(context)),
                           Divider(height: 1, color: Colors.white.withAlpha(25), indent: 52),
-                          _buildTile('Downloads', HugeIcons.strokeRoundedDownload04, onTap: () => showComingSoonDialog(context)),
+                          _buildTile('Downloads', HugeIcons.strokeRoundedDownload04, onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (ctx) => Consumer<DownloadManager>(
+                                  builder: (context, dm, _) {
+                                    final songs = dm.downloadedSongs.map((ds) => ds.song).toList();
+                                    return PlaylistDetailScreen(
+                                      title: 'Downloads',
+                                      songs: songs,
+                                    );
+                                  }
+                                ),
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),

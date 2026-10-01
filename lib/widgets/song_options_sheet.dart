@@ -17,15 +17,16 @@ import 'liquid_glass_surface.dart';
 
 class SongOptionsBottomSheet extends StatelessWidget {
   final Song song;
+  final bool showSleepTimer;
 
-  const SongOptionsBottomSheet({super.key, required this.song});
+  const SongOptionsBottomSheet({super.key, required this.song, this.showSleepTimer = false});
 
-  static void show(BuildContext context, Song song) {
+  static void show(BuildContext context, Song song, {bool showSleepTimer = false}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => SongOptionsBottomSheet(song: song),
+      builder: (context) => SongOptionsBottomSheet(song: song, showSleepTimer: showSleepTimer),
     );
   }
 
@@ -163,39 +164,41 @@ class SongOptionsBottomSheet extends StatelessWidget {
                   },
                 ),
                 _buildDivider(),
-                Consumer<SleepTimer>(
-                  builder: (context, sleepTimer, _) {
-                    final remaining = sleepTimer.timeRemaining;
-                    String? timeStr;
-                    if (remaining != null && remaining.inSeconds > 0) {
-                      final m = remaining.inMinutes;
-                      final s = remaining.inSeconds % 60;
-                      timeStr =
-                          '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-                    }
+                if (showSleepTimer) ...[
+                  Consumer<SleepTimer>(
+                    builder: (context, sleepTimer, _) {
+                      final remaining = sleepTimer.timeRemaining;
+                      String? timeStr;
+                      if (remaining != null && remaining.inSeconds > 0) {
+                        final m = remaining.inMinutes;
+                        final s = remaining.inSeconds % 60;
+                        timeStr =
+                            '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+                      }
 
-                    return _OptionTile(
-                      icon: HugeIcons.strokeRoundedClock01,
-                      iconColor: sleepTimer.isActive
-                          ? const Color(0xFFFF2D55)
-                          : Colors.white,
-                      title: 'Sleep Timer',
-                      trailing: timeStr != null
-                          ? Text(
-                              timeStr,
-                              style: const TextStyle(
-                                color: Color(0xFFFF2D55),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : null,
-                      onTap: () {
-                        _showSleepTimerPicker(context);
-                      },
-                    );
-                  },
-                ),
-                _buildDivider(),
+                      return _OptionTile(
+                        icon: HugeIcons.strokeRoundedClock01,
+                        iconColor: sleepTimer.isActive
+                            ? const Color(0xFFFF2D55)
+                            : Colors.white,
+                        title: 'Sleep Timer',
+                        trailing: timeStr != null
+                            ? Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  color: Color(0xFFFF2D55),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                        onTap: () {
+                          _showSleepTimerPicker(context);
+                        },
+                      );
+                    },
+                  ),
+                  _buildDivider(),
+                ],
                 _OptionTile(
                   icon: HugeIcons.strokeRoundedMic01,
                   title: 'View Artist',
@@ -256,10 +259,33 @@ class SongOptionsBottomSheet extends StatelessWidget {
                       title: title,
                       onTap: () {
                         if (isDownloaded) {
-                          downloadManager.removeDownload(song.id);
-                          AppToast.show(context, 'Removed from downloads');
-                          // Can auto close when removing
-                          Navigator.pop(context);
+                          // Show safe confirmation dialog before removing
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext dialogContext) {
+                              return AlertDialog(
+                                backgroundColor: const Color(0xFF1E1E1E),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                title: const Text('Remove Download', style: TextStyle(color: Colors.white)),
+                                content: Text('Are you sure you want to remove "${song.title}" from your device?', style: const TextStyle(color: Colors.white70)),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(dialogContext); // Close dialog
+                                      downloadManager.removeDownload(song.id);
+                                      AppToast.show(context, 'Removed from downloads');
+                                      Navigator.pop(context); // Close bottom sheet
+                                    },
+                                    child: const Text('Remove', style: TextStyle(color: Color(0xFFFF2D55), fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
                         } else if (isDownloading) {
                           downloadManager.cancelDownload(song.id);
                           AppToast.show(context, 'Download cancelled');

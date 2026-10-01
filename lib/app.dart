@@ -106,6 +106,7 @@ class LooprApp extends StatelessWidget {
           create: (_) => DownloadManager(prefs),
         ),
         Provider<ExtractionService>.value(value: extractionService),
+        Provider<UserProfileManager>.value(value: userProfileManager),
         Provider<RecommendationEngine>.value(value: recommendationEngine),
         ChangeNotifierProvider<HomeController>(
           create: (context) => HomeController(

@@ -41,6 +41,8 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   video_player: ^2.14.0
   sentry_flutter: ^9.30.1
+  material_symbols_icons: ^4.2960.0
+  cupertino_icons: ^2.0.0
 
 dev_dependencies:
   flutter_test:

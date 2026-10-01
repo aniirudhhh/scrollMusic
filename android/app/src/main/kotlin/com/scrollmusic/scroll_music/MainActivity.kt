@@ -12,6 +12,19 @@ class MainActivity : FlutterActivity() {
 
     private var bridge: FlutterBridge? = null
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // CRITICAL PERFORMANCE FIX:
+        // CookieManager.getInstance() synchronously initializes the entire Chromium WebView engine
+        // which takes ~500-1000ms on the main thread. By forcing this during the splash screen,
+        // we prevent an 888ms frame drop (Davey!) from happening during the first song swipe.
+        try {
+            CookieManager.getInstance()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 

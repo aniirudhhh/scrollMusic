@@ -7,7 +7,7 @@ import '../../models/song.dart';
 import '../../widgets/dynamic_single_color_background.dart';
 import '../home/home_controller.dart';
 import '../../models/playback_state.dart';
-import '../../widgets/wavy_progress_bar.dart';
+import '../../widgets/apple_progress_bar.dart';
 import '../../widgets/bounce_button.dart';
 
 class LyricsScreen extends StatefulWidget {
@@ -346,11 +346,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: WavyProgressBar(
+                                          child: AppleProgressBar(
                                             value: duration != null && duration.inMilliseconds > 0 
                                               ? position.inMilliseconds / duration.inMilliseconds 
                                               : 0.0,
-                                            onChanged: (val) {
+                                            onChangeEnd: (val) {
                                               if (duration != null) {
                                                 controller.seek(Duration(milliseconds: (val * duration.inMilliseconds).toInt()));
                                               }

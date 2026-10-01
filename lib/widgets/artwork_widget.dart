@@ -13,13 +13,11 @@ class ArtworkWidget extends StatefulWidget {
     required this.artworkUrl,
     this.fallbackUrl,
     required this.songId,
-    this.navDirection = 0.0,
     this.navCount = 0,
   });
 
   final String artworkUrl;
   final String? fallbackUrl;
-  final double navDirection;
   final int navCount;
 
   /// Used as hero tag so transitions between pages animate cleanly.

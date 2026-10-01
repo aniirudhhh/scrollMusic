@@ -141,27 +141,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 return const _EmptyState();
               }
 
-              return PageView.builder(
-                controller: _pageController,
-                scrollDirection: Axis.vertical,
-                physics: const PageScrollPhysics(),
-                // Keep prev + current + next alive to completely eliminate scroll stutter
-                allowImplicitScrolling: true,
-                itemCount: state.songsLength + (state.isLoadingMore ? 1 : 0),
-                onPageChanged: controller.onPageChanged,
-                itemBuilder: (context, index) {
-                  if (index >= state.songsLength) {
-                    return const _SplashLoading();
+              return NotificationListener<ScrollEndNotification>(
+                onNotification: (notification) {
+                  if (notification.depth == 0) {
+                    controller.onScrollEnd();
                   }
-
-                  final song = controller.songs[index];
-
-                  return SongPage(
-                    key: ValueKey('${song.id}_$index'),
-                    song: song,
-                    index: index,
-                  );
+                  return false;
                 },
+                child: PageView.builder(
+                  controller: _pageController,
+                  scrollDirection: Axis.vertical,
+                  physics: const PageScrollPhysics(),
+                  allowImplicitScrolling: true, // MUST be true so adjacent pages pre-build BEFORE swipe
+                  itemCount: state.songsLength + (state.isLoadingMore ? 1 : 0),
+                  onPageChanged: controller.onPageChanged,
+                  itemBuilder: (context, index) {
+                    if (index >= state.songsLength) {
+                      return const _SplashLoading();
+                    }
+
+                    final song = controller.songs[index];
+
+                    return SongPage(
+                      key: ValueKey(song.id),
+                      song: song,
+                      index: index,
+                    );
+                  },
+                ),
               );
             },
           ),

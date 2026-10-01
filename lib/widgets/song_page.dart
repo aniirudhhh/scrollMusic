@@ -18,13 +18,17 @@ import '../core/utils/app_toast.dart';
 import '../screens/queue/queue_screen.dart';
 import 'song_options_sheet.dart';
 import 'single_line_lyrics_view.dart';
-import 'wavy_progress_bar.dart';
+import 'apple_progress_bar.dart';
 import '../models/artist.dart';
 import '../screens/artist/artist_screen.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 class SongPage extends StatefulWidget {
-  const SongPage({super.key, required this.song, required this.index});
+  const SongPage({
+    super.key,
+    required this.song,
+    required this.index,
+  });
 
   final Song song;
   final int index;
@@ -81,19 +85,19 @@ class _SongPageState extends State<SongPage>
   Future<void> _extractColor() async {
     if (!mounted) return;
     try {
-      final imageProvider = CachedNetworkImageProvider(
-        widget.song.artwork,
-        maxWidth: 800,
-        errorListener: (err) => debugPrint('Palette image error ignored'),
+      final imageProvider = ResizeImage(
+        CachedNetworkImageProvider(
+          widget.song.artwork,
+          maxWidth: 800,
+          errorListener: (err) => debugPrint('Palette image error ignored'),
+        ),
+        width: 12, // Force decode to 12px for lightning fast extraction!
       );
 
       final palette = await PaletteGenerator.fromImageProvider(
         imageProvider,
-        maximumColorCount: 5, // Reduced for speed
-        size: const Size(
-          50,
-          50,
-        ), // Resize to tiny thumbnail for extremely fast extraction
+        maximumColorCount: 5,
+        size: const Size(12, 12),
       );
       if (mounted) {
         setState(() {
@@ -126,40 +130,8 @@ class _SongPageState extends State<SongPage>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Blurred background specifically for the player view
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-              child: Transform.scale(
-                scale: 1.15,
-                child: ArtworkWidget(
-                  artworkUrl: widget.song.artwork,
-                  fallbackUrl: widget.song.fallbackArtwork,
-                  songId: widget.song.id,
-                  navDirection: context.select<HomeController, double>((c) => c.navDirection),
-                  navCount: context.select<HomeController, int>((c) => c.programmaticNavCount),
-                ),
-              ),
-            ),
-          ),
-        ),
-        
-        // A dark gradient overlay to ensure the controls remain legible over the blur
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.1),
-                  Colors.black.withValues(alpha: 0.7),
-                ],
-              ),
-            ),
-          ),
-        ),
+
+
         
         // Removed duplicate local blurred background.
         // Handled globally by DynamicGlobalBackground.
@@ -189,12 +161,14 @@ class _SongPageState extends State<SongPage>
                   ).createShader(rect);
                 },
                 blendMode: BlendMode.dstIn,
-                child: ArtworkWidget(
-                  artworkUrl: widget.song.artwork,
-                  fallbackUrl: widget.song.fallbackArtwork,
-                  songId: widget.song.id,
-                  navDirection: context.select<HomeController, double>((c) => c.navDirection),
-                  navCount: context.select<HomeController, int>((c) => c.programmaticNavCount),
+                child: Selector<HomeController, int>(
+                  selector: (c, controller) => controller.programmaticNavCount,
+                  builder: (context, navCount, _) => ArtworkWidget(
+                    artworkUrl: widget.song.artwork,
+                    fallbackUrl: widget.song.fallbackArtwork,
+                    songId: widget.song.id,
+                    navCount: navCount,
+                  ),
                 ),
               ),
             ),
@@ -216,39 +190,52 @@ class _SongPageState extends State<SongPage>
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: _showLyrics
-                              ? GestureDetector(
-                                  key: const ValueKey('lyrics'),
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () {
-                                    setState(() {
-                                      _showLyrics = false;
-                                    });
-                                  },
-                                  child: Container(
-                                    color: Colors.transparent, // expand hit area
-                                    child: Consumer<HomeController>(
-                                      builder: (context, controller, _) {
-                                        final isCurrent = controller.currentIndex == widget.index;
-                                        return LyricsView(
-                                          title: widget.song.title,
-                                          artist: widget.song.artist,
-                                          durationNotifier: controller.durationNotifier,
-                                          positionNotifier: controller.positionNotifier,
-                                          isCurrent: isCurrent,
-                                          onTap: () {
-                                            setState(() {
-                                              _showLyrics = false;
-                                            });
-                                          },
-                                        );
-                                      },
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            AnimatedOpacity(
+                              opacity: _showLyrics ? 0.0 : 1.0,
+                              duration: const Duration(milliseconds: 300),
+                              child: IgnorePointer(
+                                ignoring: _showLyrics,
+                                child: const SizedBox.expand(key: ValueKey('artwork')),
+                              ),
+                            ),
+                            AnimatedOpacity(
+                              opacity: _showLyrics ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 300),
+                              child: IgnorePointer(
+                                ignoring: !_showLyrics,
+                                child: Selector<HomeController, bool>(
+                                  selector: (_, c) => c.currentIndex == widget.index,
+                                  builder: (context, isActive, _) => GestureDetector(
+                                    key: const ValueKey('lyrics'),
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      setState(() {
+                                        _showLyrics = false;
+                                      });
+                                    },
+                                    child: Container(
+                                      color: Colors.transparent,
+                                      child: LyricsView(
+                                        title: widget.song.title,
+                                        artist: widget.song.artist,
+                                        durationNotifier: context.read<HomeController>().durationNotifier,
+                                        positionNotifier: context.read<HomeController>().positionNotifier,
+                                        isCurrent: isActive,
+                                        onTap: () {
+                                          setState(() {
+                                            _showLyrics = false;
+                                          });
+                                        },
+                                      ),
                                     ),
                                   ),
-                                )
-                              : const SizedBox.expand(key: ValueKey('artwork')),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -366,7 +353,7 @@ class _SongPageState extends State<SongPage>
                                         size: 28,
                                       ),
                                       onPressed: () {
-                                        SongOptionsBottomSheet.show(context, widget.song);
+                                        SongOptionsBottomSheet.show(context, widget.song, showSleepTimer: true);
                                       },
                                     ),
                                   ],
@@ -392,42 +379,36 @@ class _SongPageState extends State<SongPage>
                                   },
                                 ),
                               )
-                          : Consumer<HomeController>(
-                              builder: (context, controller, _) {
-                                final isCurrent =
-                                    controller.currentIndex == widget.index;
-                                return SingleLineLyricsView(
-                                  title: widget.song.title,
-                                  artist: widget.song.artist,
-                                  durationNotifier: controller.durationNotifier,
-                                  positionNotifier: controller.positionNotifier,
-                                  isCurrent: isCurrent,
-                                  onTap: () {
-                                    setState(() { _showLyrics = true; });
-                                  },
-                                );
-                              },
+                          : Selector<HomeController, bool>(
+                              selector: (_, c) => c.currentIndex == widget.index,
+                              builder: (_, isCurrent, __) => SingleLineLyricsView(
+                                title: widget.song.title,
+                                artist: widget.song.artist,
+                                durationNotifier: context.read<HomeController>().durationNotifier,
+                                positionNotifier: context.read<HomeController>().positionNotifier,
+                                isCurrent: isCurrent,
+                                onTap: () {
+                                  setState(() { _showLyrics = true; });
+                                },
+                              ),
                             ),
                     ),
 
                     // Gap removed to stack lyrics closer to progress bar
 
                     // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Progress Bar ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-                    Consumer<HomeController>(
-                        builder: (context, controller, _) {
-                          final isCurrent =
-                              controller.currentIndex == widget.index;
-                          final state = isCurrent
-                              ? controller.playbackState
-                              : PlaybackState.idle;
+                    Selector<HomeController, ({bool active, PlaybackState state})>(
+                        selector: (_, c) => (active: c.currentIndex == widget.index, state: c.playbackState),
+                        builder: (context, val, _) {
+                          final effectiveState = val.active ? val.state : PlaybackState.idle;
                           return _ProgressBar(
-                            positionNotifier: controller.positionNotifier,
-                            isCurrent: isCurrent,
-                            durationNotifier: controller.durationNotifier,
-                            onSeek: controller.seek,
+                            positionNotifier: context.read<HomeController>().positionNotifier,
+                            isCurrent: val.active,
+                            durationNotifier: context.read<HomeController>().durationNotifier,
+                            onSeek: context.read<HomeController>().seek,
                             isPaused:
-                                state != PlaybackState.playing &&
-                                state != PlaybackState.loading,
+                                effectiveState != PlaybackState.playing &&
+                                effectiveState != PlaybackState.loading,
                             activeColor: _primaryColor ?? Colors.white,
                           );
                         },
@@ -444,16 +425,13 @@ class _SongPageState extends State<SongPage>
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16.0,
                             ),
-                            child: Consumer<HomeController>(
-                              builder: (context, controller, _) {
-                                final isCurrent =
-                                    controller.currentIndex == widget.index;
-                                final state = isCurrent
-                                    ? controller.playbackState
-                                    : PlaybackState.idle;
+                            child: Selector<HomeController, ({bool active, PlaybackState state})>(
+                              selector: (_, c) => (active: c.currentIndex == widget.index, state: c.playbackState),
+                              builder: (context, val, _) {
+                                final effectiveState = val.active ? val.state : PlaybackState.idle;
                                 final bool isPlaying =
-                                    state == PlaybackState.playing ||
-                                    state == PlaybackState.buffering;
+                                    effectiveState == PlaybackState.playing ||
+                                    effectiveState == PlaybackState.buffering;
 
                                 return AnimatedPlaybackControls(
                                   isPlaying: isPlaying,
@@ -475,10 +453,10 @@ class _SongPageState extends State<SongPage>
                                       _onSecondaryContainer ?? Colors.white,
                                   tintNextIcon:
                                       _onSecondaryContainer ?? Colors.white,
-                                  onPrevious: () => controller.skipToPrev(),
+                                  onPrevious: () => context.read<HomeController>().skipToPrev(),
                                   onPlayPause: () =>
-                                      controller.togglePlayPause(),
-                                  onNext: () => controller.skipToNext(),
+                                      context.read<HomeController>().togglePlayPause(),
+                                  onNext: () => context.read<HomeController>().skipToNext(),
                                 );
                               },
                             ),
@@ -509,36 +487,38 @@ class _SongPageState extends State<SongPage>
                             );
                           },
                         ),
-                        Consumer<HomeController>(
-                          builder: (context, controller, child) {
+                        Selector<HomeController, bool>(
+                          selector: (context, controller) => controller.isShuffled,
+                          builder: (context, isShuffled, child) {
                             return IconButton(
                               icon: HugeIcon(
                                 icon: HugeIcons.strokeRoundedShuffle,
                                 size: 24.0,
-                                color: controller.isShuffled
+                                color: isShuffled
                                     ? Colors.greenAccent
                                     : Colors.white70,
                                 strokeWidth: 1.5,
                               ),
                               onPressed: () {
-                                controller.toggleShuffle();
+                                context.read<HomeController>().toggleShuffle();
                               },
                             );
                           },
                         ),
-                        Consumer<HomeController>(
-                          builder: (context, controller, child) {
+                        Selector<HomeController, bool>(
+                          selector: (context, controller) => controller.isLoopOne,
+                          builder: (context, isLoopOne, child) {
                             return IconButton(
                               icon: HugeIcon(
                                 icon: HugeIcons.strokeRoundedArrowReloadHorizontal,
                                 size: 24.0,
-                                color: controller.isLoopOne
+                                color: isLoopOne
                                     ? Colors.greenAccent
                                     : Colors.white70,
                                 strokeWidth: 1.5,
                               ),
                               onPressed: () {
-                                controller.toggleLoop();
+                                context.read<HomeController>().toggleLoop();
                               },
                             );
                           },
@@ -718,7 +698,7 @@ class _ProgressBar extends StatelessWidget {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                WavyProgressBar(
+                AppleProgressBar(
                   value: progress.clamp(0.0, 1.0),
                   isPaused: isPaused,
                   activeColor: activeColor,
@@ -734,7 +714,7 @@ class _ProgressBar extends StatelessWidget {
                   offset: const Offset(
                     0,
                     -2,
-                  ), // Adjusted for WavyProgressBar height
+                  ), // Adjusted for AppleProgressBar height
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

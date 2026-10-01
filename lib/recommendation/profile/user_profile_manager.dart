@@ -24,19 +24,25 @@ class UserProfileManager {
   }
 
   Future<void> _save() async {
-    await _prefs.setString(_kArtistScoresKey, jsonEncode(_artistScores));
+    final scoresCopy = Map<String, double>.from(_artistScores);
+    final encoded = await Future.microtask(() => jsonEncode(scoresCopy));
+    await _prefs.setString(_kArtistScoresKey, encoded);
   }
 
   void recordArtistInteraction(String artist, double weight) {
     if (artist.isEmpty || artist == 'Unknown Artist') return;
     
-    // Apply decay to existing score to prevent dominance
+    // Global decay: slowly fade out old preferences to let new tastes take over
+    final keys = _artistScores.keys.toList();
+    for (final k in keys) {
+      _artistScores[k] = _artistScores[k]! * 0.98; // 2% decay on every interaction
+    }
+    
+    // Add weight to the played artist
     double currentScore = _artistScores[artist] ?? 0.0;
+    currentScore += weight;
     
-    // Smooth update: newScore = oldScore * decay + weight
-    currentScore = (currentScore * 0.95) + weight;
-    
-    // Clamp to prevent infinite growth or negativity
+    // Clamp to prevent infinite growth
     if (currentScore > 100.0) currentScore = 100.0;
     if (currentScore < -50.0) currentScore = -50.0;
 
@@ -46,5 +52,11 @@ class UserProfileManager {
 
   double getArtistScore(String artist) {
     return _artistScores[artist] ?? 0.0;
+  }
+
+  List<String> getTopArtists(int limit) {
+    final entries = _artistScores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return entries.take(limit).map((e) => e.key).toList();
   }
 }

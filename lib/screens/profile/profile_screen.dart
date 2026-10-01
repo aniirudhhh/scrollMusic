@@ -15,6 +15,8 @@ import '../../core/utils/app_toast.dart';
 import '../artist/artist_screen.dart';
 import '../../data/yt_music_sync_service.dart';
 import '../playlist/playlist_edit_sheet.dart';
+import '../../widgets/song_options_sheet.dart';
+import 'made_for_you_loader.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -84,15 +86,39 @@ class ProfileScreen extends StatelessWidget {
                       onTap: () => showComingSoonDialog(context),
                     ),
                     _LibraryCategoryTile(
+                      title: 'Downloads',
+                      icon: HugeIcons.strokeRoundedDownload04,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (ctx) => Consumer<DownloadManager>(
+                              builder: (context, dm, _) {
+                                final songs = dm.downloadedSongs.map((ds) => ds.song).toList();
+                                return PlaylistDetailScreen(
+                                  title: 'Downloads',
+                                  songs: songs,
+                                );
+                              }
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _LibraryCategoryTile(
                       title: 'Liked Songs',
                       icon: HugeIcons.strokeRoundedFavourite,
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => _PlaylistDetailScreen(
-                              title: 'Liked Songs',
-                              songs: library.likedSongs,
+                            builder: (ctx) => Consumer<LibraryManager>(
+                              builder: (context, lib, _) {
+                                return PlaylistDetailScreen(
+                                  title: 'Liked Songs',
+                                  songs: lib.likedSongs,
+                                );
+                              }
                             ),
                           ),
                         );
@@ -101,40 +127,15 @@ class ProfileScreen extends StatelessWidget {
                     _LibraryCategoryTile(
                       title: 'Made for You',
                       icon: HugeIcons.strokeRoundedUserCircle,
-                      onTap: () => showComingSoonDialog(context),
-                    ),
-                    _LibraryCategoryTile(
-                      title: 'Recently Played',
-                      icon: HugeIcons.strokeRoundedTime02,
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => _PlaylistDetailScreen(
-                              title: 'Recently Played',
-                              songs: library.recentlyPlayed,
-                            ),
-                          ),
+                          MaterialPageRoute(builder: (_) => const MadeForYouLoader()),
                         );
                       },
                     ),
-                    _LibraryCategoryTile(
-                      title: 'Downloads',
-                      icon: HugeIcons.strokeRoundedDownload04,
-                      isLast: false,
-                      onTap: () {
-                        final downloadManager = context.read<DownloadManager>();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => _PlaylistDetailScreen(
-                              title: 'Downloads',
-                              songs: downloadManager.downloadedSongs.map((d) => d.song).toList(),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+
+
                     _LibraryCategoryTile(
                       title: 'Profile & Settings',
                       icon: HugeIcons.strokeRoundedSettings01,
@@ -206,6 +207,9 @@ class _RecentlyPlayedGrid extends StatelessWidget {
                     onTap: () {
                       context.read<HomeController>().playNewQueue([song]);
                       AppToast.show(context, 'Playing ${song.title}');
+                    },
+                    onLongPress: () {
+                      SongOptionsBottomSheet.show(context, song);
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Column(
@@ -377,7 +381,7 @@ class _PlaylistsListView extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => _PlaylistDetailScreen(
+                        builder: (_) => PlaylistDetailScreen(
                           playlist: playlist,
                           title: playlist.name,
                           songs: playlist.songs,
@@ -441,8 +445,8 @@ void _showCreatePlaylistModal(BuildContext context, LibraryManager library) {
 
 // â”€â”€â”€ Playlist Details View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class _PlaylistDetailScreen extends StatelessWidget {
-  const _PlaylistDetailScreen({
+class PlaylistDetailScreen extends StatelessWidget {
+  const PlaylistDetailScreen({
     required this.title,
     required this.songs,
     this.playlistId,
@@ -596,6 +600,9 @@ class _PlaylistDetailScreen extends StatelessWidget {
                             final queue = songs.sublist(index);
                             context.read<HomeController>().playNewQueue(queue);
                             AppToast.show(context, 'Playing ${song.title}');
+                          },
+                          onLongPress: () {
+                            SongOptionsBottomSheet.show(context, song);
                           },
                           borderRadius: BorderRadius.circular(8),
                           child: Row(

@@ -14,6 +14,7 @@ import '../../playback/playback_manager.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../recommendation/recommendation_engine.dart';
 import '../../data/download_manager.dart';
+import '../../core/utils/artwork_helper.dart';
 
 /// The single source of truth for:
 ///   - which song is current
@@ -208,7 +209,9 @@ class HomeController extends ChangeNotifier {
   Future<void> onPageChanged(int newIndex) async {
     if (newIndex == _queue.currentIndex) return;
 
-    _recordInteractionForCurrent();
+    final oldSong = currentSong;
+    final currentMs = positionNotifier.value.inMilliseconds.toDouble();
+    final totalMs = (durationNotifier.value?.inMilliseconds ?? 0).toDouble();
 
     // Update state synchronously to prevent scroll stutter
     _queue.currentIndex = newIndex;
@@ -218,18 +221,50 @@ class HomeController extends ChangeNotifier {
     _playbackState = PlaybackState.idle;
     _programmaticNav = false; // User swipe, don't trigger animateToPage
     _navDirection = 0.0;
-    notifyListeners();
-    _queue.saveUpcomingCache();
+    
+    _needsScrollEndNotify = true;
 
-    _player.pause();
+    // Immediately pause audio to avoid audio overlap (in a microtask to yield the current 16ms animation frame!)
+    Future.microtask(() => _player.pause());
 
-    // Trigger more songs fetch well in advance (within 6 songs from end)
-    // always auto-play on swipe
-    // Debounce both to prevent extraction/network storms during rapid swiping
-    _swipeDebouncer.call(() {
+    _pendingOldSong = oldSong;
+    _pendingCurrentMs = currentMs;
+    _pendingTotalMs = totalMs;
+    _needsPlayOnScrollEnd = true;
+  }
+
+  Song? _pendingOldSong;
+  double _pendingCurrentMs = 0;
+  double _pendingTotalMs = 0;
+  bool _needsPlayOnScrollEnd = false;
+
+  bool _needsScrollEndNotify = false;
+
+  void onScrollEnd() {
+    if (_needsScrollEndNotify) {
+      _needsScrollEndNotify = false;
+      notifyListeners();
+    }
+    
+    if (_needsPlayOnScrollEnd) {
+      _needsPlayOnScrollEnd = false;
+      
+      if (_pendingOldSong != null && _pendingTotalMs > 0) {
+        final ratio = _pendingCurrentMs / _pendingTotalMs;
+        if (ratio >= 0.9) {
+          _recEngine.recordSongCompleted(_pendingOldSong!);
+        } else {
+          _recEngine.recordSongSkipped(_pendingOldSong!, ratio);
+        }
+      }
+      
+      _queue.saveUpcomingCache();
+      
+      // We are fully settled. Safe to do heavy work.
+      _prefetchAround(_queue.currentIndex);
       _checkAndFetchMore();
       play(isUserInitiated: true);
-    });
+    }
   }
 
   Future<void> jumpToIndex(int index) async {
@@ -257,22 +292,36 @@ class HomeController extends ChangeNotifier {
       return;
     }
 
-    if (_queue.currentIndex >= _queue.songs.length - 6 && !_repo.isLoading) {
+    // Fetch if we are within 15 songs of the end to prevent reaching the end
+    if (_queue.currentIndex >= _queue.songs.length - 15 && !_repo.isLoading) {
       _feedError = null;
       if (_queue.songs.isNotEmpty) {
         final lastSong = _queue.songs.last;
         _repo.fetchMoreRelated(lastSong).then((newSongs) {
+          int added = 0;
           if (newSongs.isNotEmpty) {
-            for (var s in newSongs) _queue.addSongLast(s);
+            for (var s in newSongs) {
+              if (_queue.addSongLast(s)) added++;
+            }
+          }
+          if (added > 0) {
             notifyListeners();
             _queue.saveUpcomingCache();
           } else {
-            // Fallback if recommendations fail
+            // Fallback if recommendations fail or were entirely duplicates!
             _repo.fetchMore().then((fallbackSongs) {
+              int fbAdded = 0;
               if (fallbackSongs.isNotEmpty) {
-                for (var s in fallbackSongs) _queue.addSongLast(s);
+                for (var s in fallbackSongs) {
+                  if (_queue.addSongLast(s)) fbAdded++;
+                }
+              }
+              if (fbAdded > 0) {
                 notifyListeners();
                 _queue.saveUpcomingCache();
+              } else {
+                _feedError = 'Failed to find fresh songs';
+                notifyListeners();
               }
             }).catchError((e) {
               _feedError = 'Failed to load more songs';
@@ -281,8 +330,13 @@ class HomeController extends ChangeNotifier {
           }
         }).catchError((e) {
           _repo.fetchMore().then((fallbackSongs) {
+            int fbAdded = 0;
             if (fallbackSongs.isNotEmpty) {
-              for (var s in fallbackSongs) _queue.addSongLast(s);
+              for (var s in fallbackSongs) {
+                if (_queue.addSongLast(s)) fbAdded++;
+              }
+            }
+            if (fbAdded > 0) {
               notifyListeners();
               _queue.saveUpcomingCache();
             }
@@ -293,8 +347,13 @@ class HomeController extends ChangeNotifier {
         });
       } else {
         _repo.fetchMore().then((newSongs) {
+          int added = 0;
           if (newSongs.isNotEmpty) {
-            for (var s in newSongs) _queue.addSongLast(s);
+            for (var s in newSongs) {
+              if (_queue.addSongLast(s)) added++;
+            }
+          }
+          if (added > 0) {
             notifyListeners();
             _queue.saveUpcomingCache();
           }
@@ -557,7 +616,10 @@ class HomeController extends ChangeNotifier {
     }
   }
 
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    positionNotifier.value = position;
+    await _player.seek(position);
+  }
 
   Future<void> retry() async {
     final song = currentSong;
@@ -674,30 +736,29 @@ class HomeController extends ChangeNotifier {
         final nextSong = _queue.songs[nextIndex];
 
         // Image precaching (MUST MATCH ArtworkWidget memCacheWidth to share cache key!)
-        final imageProvider = CachedNetworkImageProvider(
+        final imageProvider = ArtworkHelper.getProvider(
           nextSong.artwork,
-          maxWidth: 800,
-          errorListener: (err) => debugPrint('Prefetch image error ignored'),
+          nextSong.id,
+          _downloadManager,
         );
         imageProvider
             .resolve(const ImageConfiguration())
             .addListener(
               ImageStreamListener(
                 (info, sync) {},
-                onError: (err, stack) =>
-                    debugPrint('Prefetch image stream error ignored'),
-              ),
-            );
-
-        // Precache the tiny 12px background variant to completely eliminate disk/decode hiccups during swipe
-        final bgProvider = ResizeImage(imageProvider, width: 12);
-        bgProvider
-            .resolve(const ImageConfiguration())
-            .addListener(
-              ImageStreamListener(
-                (info, sync) {},
-                onError: (err, stack) =>
-                    debugPrint('Prefetch background stream error ignored'),
+                onError: (err, stack) {
+                  // If maxresdefault 404s, precache the fallback immediately!
+                  if (nextSong.fallbackArtwork != null) {
+                    final fallbackProvider = ArtworkHelper.getProvider(
+                      nextSong.fallbackArtwork!,
+                      nextSong.id,
+                      _downloadManager,
+                    );
+                    fallbackProvider
+                        .resolve(const ImageConfiguration())
+                        .addListener(ImageStreamListener((_, __) {}));
+                  }
+                },
               ),
             );
 
@@ -779,13 +840,10 @@ class HomeController extends ChangeNotifier {
               }
             }
           }
-          
           _error = currentError;
-          notifyListeners();
-          _queue.saveUpcomingCache();
+          if (!_needsScrollEndNotify) notifyListeners();
         } else {
-          notifyListeners();
-          _queue.saveUpcomingCache();
+          if (!_needsScrollEndNotify) notifyListeners();
         }
       }),
 
@@ -819,7 +877,6 @@ class HomeController extends ChangeNotifier {
   void _setPlaybackState(PlaybackState state) {
     _playbackState = state;
     notifyListeners();
-    _queue.saveUpcomingCache();
   }
 
   @override

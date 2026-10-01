@@ -40,20 +40,22 @@ class QueueManager {
   }
 
   void saveUpcomingCache() {
-    try {
-      final startIndex = (currentIndex + 1).clamp(0, songs.length);
-      final upcoming = songs.sublist(startIndex).take(15).toList();
-      // If the user reached the very end, save the last song just so we have something on boot
-      if (upcoming.isEmpty && songs.isNotEmpty) {
-        upcoming.add(songs.last);
+    Future.microtask(() {
+      try {
+        final startIndex = (currentIndex + 1).clamp(0, songs.length);
+        final upcoming = songs.sublist(startIndex).take(15).toList();
+        // If the user reached the very end, save the last song just so we have something on boot
+        if (upcoming.isEmpty && songs.isNotEmpty) {
+          upcoming.add(songs.last);
+        }
+        if (upcoming.isNotEmpty) {
+          final encoded = jsonEncode(upcoming.map((e) => e.toJson()).toList());
+          prefs.setString('cached_feed', encoded);
+        }
+      } catch (e) {
+        debugPrint('QueueManager saveUpcomingCache error: $e');
       }
-      if (upcoming.isNotEmpty) {
-        final encoded = jsonEncode(upcoming.map((e) => e.toJson()).toList());
-        prefs.setString('cached_feed', encoded);
-      }
-    } catch (e) {
-      debugPrint('QueueManager saveUpcomingCache error: $e');
-    }
+    });
   }
 
   void insertSong(int index, Song song) {

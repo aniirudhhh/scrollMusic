@@ -1,4 +1,4 @@
-﻿package com.scrollmusic.scroll_music.bridge
+package com.scrollmusic.scroll_music.bridge
 
 import android.content.Context
 import com.scrollmusic.scroll_music.extraction.ExtractionException
@@ -14,6 +14,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.downloader.Downloader
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
 
 /**
  * FlutterBridge registers the MethodChannels and EventChannel with the Flutter engine
@@ -35,15 +37,25 @@ class FlutterBridge(private val context: Context) {
     // EventChannel sink â€” null when Flutter isn't listening
     private var eventSink: EventChannel.EventSink? = null
 
+    // Run NewPipe initialization in the background so it doesn't block the main thread and Flutter app startup
+    private var initDeferred: Deferred<Unit>? = null
+
+    private suspend fun ensureInitialized() {
+        var deferred = initDeferred
+        if (deferred == null || deferred.isCancelled) {
+            deferred = scope.async(Dispatchers.IO) {
+                NewPipe.init(ScrollMusicDownloader)
+            }
+            initDeferred = deferred
+        }
+        deferred.await()
+    }
+
     fun setup(
         extractionChannel: MethodChannel,
         playbackChannel: MethodChannel,
         playbackEventChannel: EventChannel,
     ) {
-        // Initialize NewPipe with an OkHttp-based downloader.
-        // This only needs to happen once per process.
-        NewPipe.init(ScrollMusicDownloader)
-
         extractionChannel.setMethodCallHandler(::handleExtractionCall)
         playbackChannel.setMethodCallHandler(::handlePlaybackCall)
 
@@ -75,6 +87,7 @@ class FlutterBridge(private val context: Context) {
 
                 scope.launch {
                     try {
+                        ensureInitialized()
                         val streamResult = extractor.extractAudioStream(videoId)
                         result.success(
                             mapOf(
@@ -93,6 +106,7 @@ class FlutterBridge(private val context: Context) {
             "fetchDiscoveryFeed" -> {
                 scope.launch {
                     try {
+                        ensureInitialized()
                         val feed = discoveryManager.fetchDiscoveryFeed()
                         result.success(feed)
                     } catch (e: ExtractionException) {
@@ -108,6 +122,7 @@ class FlutterBridge(private val context: Context) {
                 val filter = call.argument<String>("filter")
                 scope.launch {
                     try {
+                        ensureInitialized()
                         val searchResults = searchManager.search(query, filter)
                         result.success(searchResults)
                     } catch (e: Exception) {
@@ -120,6 +135,7 @@ class FlutterBridge(private val context: Context) {
                     ?: return result.error("INVALID_ARGS", "videoId is required", null)
                 scope.launch {
                     try {
+                        ensureInitialized()
                         val recommendations = extractor.fetchRecommendations(videoId)
                         result.success(recommendations)
                     } catch (e: Exception) {

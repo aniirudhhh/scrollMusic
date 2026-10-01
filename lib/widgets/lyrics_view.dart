@@ -30,10 +30,10 @@ class _LyricsViewState extends State<LyricsView> {
   final _scrollController = ScrollController();
   
   List<LyricLine>? _lyrics;
+  List<GlobalKey>? _keys;
   bool _isLoading = true;
   String _error = '';
   
-  int _activeIndex = -1;
   bool _isFirstScroll = true;
   int _fetchGeneration = 0;
 
@@ -71,6 +71,7 @@ class _LyricsViewState extends State<LyricsView> {
   void dispose() {
     widget.positionNotifier.removeListener(_onPositionChanged);
     _scrollController.dispose();
+    _activeIndexNotifier.dispose();
     super.dispose();
   }
 
@@ -80,6 +81,7 @@ class _LyricsViewState extends State<LyricsView> {
       _isLoading = true;
       _error = '';
       _lyrics = null;
+      _keys = null;
     });
 
     try {
@@ -91,6 +93,9 @@ class _LyricsViewState extends State<LyricsView> {
         setState(() {
           _isLoading = false;
           _lyrics = result;
+          if (result != null) {
+            _keys = List.generate(result.length, (i) => GlobalKey());
+          }
           _isFirstScroll = true;
           if (result == null || result.isEmpty) {
             _error = "Looks like we don't have lyrics for this song yet.";
@@ -111,10 +116,11 @@ class _LyricsViewState extends State<LyricsView> {
     }
   }
 
-  final Map<int, GlobalKey> _lineKeys = {};
+  final ValueNotifier<int> _activeIndexNotifier = ValueNotifier(-1);
+  int get _activeIndex => _activeIndexNotifier.value;
 
   void _updateActiveIndex() {
-    if (_lyrics == null || _lyrics!.isEmpty) return;
+    if (_lyrics == null || _lyrics!.isEmpty || _keys == null) return;
     
     final ms = widget.positionNotifier.value.inMilliseconds + 400;
     
@@ -130,37 +136,33 @@ class _LyricsViewState extends State<LyricsView> {
 
     if (newIndex != _activeIndex || _isFirstScroll) {
       if (newIndex != _activeIndex) {
-        setState(() => _activeIndex = newIndex);
+        _activeIndexNotifier.value = newIndex;
       }
       
-      // Perfectly center the active line by manually animating the inner scroll controller
-      if (_activeIndex >= 0) {
-        final key = _lineKeys[_activeIndex];
-        if (key != null && key.currentContext != null) {
-          final box = key.currentContext!.findRenderObject() as RenderBox?;
-          final scrollableState = Scrollable.of(key.currentContext!);
-          
-          if (box != null) {
-            final scrollBox = scrollableState.context.findRenderObject() as RenderBox?;
-            if (scrollBox != null) {
-              final offset = box.localToGlobal(Offset.zero, ancestor: scrollBox);
-              
-              final currentScroll = _scrollController.offset;
-              final targetScroll = currentScroll + offset.dy - (scrollBox.size.height / 2) + (box.size.height / 2);
-              final clampedTarget = targetScroll.clamp(0.0, _scrollController.position.maxScrollExtent);
-              
-              if (_isFirstScroll) {
-                _isFirstScroll = false;
-                _scrollController.jumpTo(clampedTarget);
-              } else {
-                _scrollController.animateTo(
-                  clampedTarget,
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutCubic,
-                );
-              }
+      if (newIndex >= 0 && newIndex < _keys!.length) {
+        final key = _keys![newIndex];
+        
+        void scrollToKey() {
+          if (key.currentContext != null) {
+            final renderObject = key.currentContext!.findRenderObject();
+            if (renderObject != null && _scrollController.hasClients) {
+              _scrollController.position.ensureVisible(
+                renderObject,
+                alignment: 0.5,
+                duration: _isFirstScroll ? Duration.zero : const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+              );
+              _isFirstScroll = false;
             }
           }
+        }
+        
+        if (key.currentContext != null) {
+          scrollToKey();
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) scrollToKey();
+          });
         }
       }
     }
@@ -199,66 +201,77 @@ class _LyricsViewState extends State<LyricsView> {
       );
     }
 
-    // Initialize keys if needed
-    if (_lineKeys.length != _lyrics!.length) {
-      _lineKeys.clear();
-      for (int i = 0; i < _lyrics!.length; i++) {
-        _lineKeys[i] = GlobalKey();
-      }
+    if (_lyrics == null || _keys == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white54),
+      );
     }
 
-    return ShaderMask(
-      shaderCallback: (rect) {
-        return const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
-          stops: [0.0, 0.15, 0.85, 1.0],
-        ).createShader(rect);
-      },
-      blendMode: BlendMode.dstIn,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: widget.onTap,
-        child: SingleChildScrollView(
-          controller: _scrollController,
-        padding: const EdgeInsets.symmetric(vertical: 180, horizontal: 16),
-        child: Column(
-          children: List.generate(_lyrics!.length, (index) {
-            final line = _lyrics![index];
-            if (line.isGap) return SizedBox(key: _lineKeys[index], height: 24);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final halfHeight = constraints.maxHeight / 2;
+        
+        return ShaderMask(
+          shaderCallback: (rect) {
+            return const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
+              stops: [0.0, 0.15, 0.85, 1.0],
+            ).createShader(rect);
+          },
+          blendMode: BlendMode.dstIn,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: widget.onTap,
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: EdgeInsets.symmetric(vertical: halfHeight, horizontal: 16),
+              child: Column(
+                children: List.generate(_lyrics!.length, (index) {
+                  final line = _lyrics![index];
+                  final key = _keys![index];
+                  
+                  if (line.isGap) return SizedBox(key: key, height: 24);
 
-            final isActive = index == _activeIndex;
-            final isPassed = index < _activeIndex;
+                  return ValueListenableBuilder<int>(
+                    valueListenable: _activeIndexNotifier,
+                    builder: (context, activeIdx, child) {
+                      final isActive = index == activeIdx;
+                      final isPassed = index < activeIdx;
 
-            return Container(
-              key: _lineKeys[index],
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: AnimatedScale(
-                scale: isActive ? 1.0 : 0.85,
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOutCubic,
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 400),
-                  style: TextStyle(
-                    fontSize: 20, // Base layout size (max size)
-                    fontWeight: FontWeight.w700, 
-                    color: isActive 
-                        ? Colors.white 
-                        : (isPassed ? Colors.white.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.3)),
-                    height: 1.4,
-                  ),
-                  child: Text(
-                    line.text,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                      return Container(
+                        key: key,
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: AnimatedScale(
+                          scale: isActive ? 1.0 : 0.85,
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeOutCubic,
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 400),
+                            style: TextStyle(
+                              fontSize: 20, // Base layout size (max size)
+                              fontWeight: FontWeight.w700, 
+                              color: isActive 
+                                  ? Colors.white 
+                                  : (isPassed ? Colors.white.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.3)),
+                              height: 1.4,
+                            ),
+                            child: Text(
+                              line.text,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }),
               ),
-            );
-          }),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

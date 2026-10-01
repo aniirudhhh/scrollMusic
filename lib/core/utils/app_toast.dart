@@ -105,46 +105,40 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(100),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A).withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(100),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.15),
-                            width: 1,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF222222).withValues(alpha: 0.95), // Opaque dark grey
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        HugeIcon(
+                          icon: widget.icon,
+                          color: Colors.white,
+                          size: 18,
+                          strokeWidth: 2,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            widget.message,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            HugeIcon(
-                              icon: widget.icon,
-                              color: Colors.white,
-                              size: 18,
-                              strokeWidth: 2,
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                widget.message,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
                 ),

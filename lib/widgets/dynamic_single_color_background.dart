@@ -69,13 +69,7 @@ class _DynamicSingleColorBackgroundState
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final controller = context.watch<HomeController>();
-    final song = controller.currentSong;
-    if (song != null && song.artwork != _lastProcessedArtwork) {
-      _lastProcessedArtwork = song.artwork;
-      final dm = context.read<DownloadManager>();
-      _handleArtworkChange(song, dm, Theme.of(context).colorScheme.surface);
-    }
+    // Logic moved to build()
   }
 
   void _handleArtworkChange(Song song, DownloadManager dm, Color fallbackColor) async {
@@ -161,6 +155,16 @@ class _DynamicSingleColorBackgroundState
 
   @override
   Widget build(BuildContext context) {
+    final song = context.select<HomeController, Song?>((c) => c.currentSong);
+    if (song != null && song.artwork != _lastProcessedArtwork) {
+      _lastProcessedArtwork = song.artwork;
+      final dm = context.read<DownloadManager>();
+      final fallbackColor = Theme.of(context).colorScheme.surface;
+      Future.microtask(() {
+        if (mounted) _handleArtworkChange(song, dm, fallbackColor);
+      });
+    }
+
     return RepaintBoundary(
       child: ValueListenableBuilder<Color?>(
         valueListenable: _animatedColor,

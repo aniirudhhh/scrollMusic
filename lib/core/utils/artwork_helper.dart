@@ -15,7 +15,7 @@ class ArtworkHelper {
         return FileImage(file);
       }
     }
-    return CachedNetworkImageProvider(artworkUrl);
+    return ResizeImage(CachedNetworkImageProvider(artworkUrl), width: 800);
   }
 
   /// Returns a Widget suitable for displaying the artwork (local or network)
@@ -38,6 +38,7 @@ class ArtworkHelper {
     return CachedNetworkImage(
       imageUrl: artworkUrl,
       fit: fit,
+      memCacheWidth: 800, // MUST MATCH _prefetchAround maxWidth to hit memory cache!
       fadeInDuration: const Duration(milliseconds: 300),
       placeholder: placeholder,
       errorWidget: (context, url, error) {
@@ -45,6 +46,7 @@ class ArtworkHelper {
           return CachedNetworkImage(
             imageUrl: fallbackUrl,
             fit: fit,
+            memCacheWidth: 800,
             fadeInDuration: const Duration(milliseconds: 300),
             placeholder: placeholder,
             errorWidget: errorWidget,
